@@ -1,0 +1,131 @@
+name: Build and Release MonoDo APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'Release Notes / Description'
+        required: false
+        default: 'Automated build triggered by developer Vishal Dhangar'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Prepare Secrets and Keystore
+        run: |
+          # Create .env from template if not present
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+          
+          # Restore debug.keystore if base64 file exists
+          if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+          # Ensure gradlew exists
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper
+          fi
+          chmod +x ./gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Prepare Versioned APK Files
+        id: prepare_files
+        run: |
+          BUILD_NUM="${{ github.run_number }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION_TAG="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION_TAG="v1.0.${BUILD_NUM}"
+          fi
+          
+          echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          
+          mkdir -p output_apks
+          
+          ORIGINAL_APK="app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$ORIGINAL_APK" ]; then
+            VERSIONED_APK="output_apks/MonoDo-${VERSION_TAG}.apk"
+            LATEST_APK="output_apks/MonoDo-latest.apk"
+            
+            cp "$ORIGINAL_APK" "$VERSIONED_APK"
+            cp "$ORIGINAL_APK" "$LATEST_APK"
+            
+            echo "Successfully prepared: $VERSIONED_APK and $LATEST_APK"
+          else
+            echo "APK file not found at expected path: $ORIGINAL_APK"
+            exit 1
+          fi
+
+      - name: Upload APK Artifact to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: MonoDo-APK-${{ steps.prepare_files.outputs.VERSION_TAG }}
+          path: output_apks/*.apk
+          retention-days: 30
+
+      - name: Create or Update GitHub Release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.prepare_files.outputs.VERSION_TAG }}
+          name: "MonoDo ${{ steps.prepare_files.outputs.VERSION_TAG }} - by Vishal Dhangar"
+          body: |
+            ## 📱 MonoDo - Minimalist Monochrome Task Manager
+            **Created & Maintained by Vishal Dhangar**
+
+            ### 🚀 What's New in this Build:
+            - Automated Continuous Integration build: `${{ steps.prepare_files.outputs.VERSION_TAG }}`
+            - Commit: `${{ github.sha }}`
+            - Note: ${{ github.event.inputs.release_notes || 'Clean build generated automatically on git push.' }}
+
+            ### 📥 Download & Installation:
+            1. Download **`MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk`** or **`MonoDo-latest.apk`** below.
+            2. Open the downloaded `.apk` file on your Android device.
+            3. If prompted, allow **"Install unknown apps"** in your phone settings.
+            4. Enjoy your minimalist, offline-first task tracker!
+          draft: false
+          prerelease: false
+          files: |
+            output_apks/MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk
+            output_apks/MonoDo-latest.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
