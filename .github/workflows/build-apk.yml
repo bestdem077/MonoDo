@@ -14,16 +14,16 @@ on:
   workflow_dispatch:
     inputs:
       release_notes:
-        description: 'Release Notes / Description'
+        description: 'Release Notes / Custom Message'
         required: false
-        default: 'Automated build triggered by developer Vishal Dhangar'
+        default: 'Automated release generated on push by Vishal Dhangar'
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build & Package Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -44,14 +44,21 @@ jobs:
       - name: Prepare Signing Keystore, Licenses and Secrets
         run: |
           echo "=== 1. Setting up debug.keystore ==="
-          # Try restoring debug.keystore from base64 if present
+          # Try restoring debug.keystore from base64 file if present
           if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
           fi
 
-          # If debug.keystore is still missing or empty, generate a valid one using JDK keytool
+          # If debug.keystore is still missing or empty, restore the canonical fixed keystore
           if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
-            echo "Generating new debug.keystore with keytool..."
+            echo "Restoring fixed canonical debug.keystore..."
+            echo "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" | base64 -d > debug.keystore 2>/dev/null || \
+            echo "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" | base64 --decode > debug.keystore 2>/dev/null || true
+          fi
+
+          # Fallback generation only if both above methods fail
+          if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
+            echo "Generating fallback debug.keystore with keytool..."
             keytool -genkey -v \
               -keystore debug.keystore \
               -storepass android \
@@ -101,37 +108,124 @@ jobs:
             gradle assembleDebug --stacktrace
           fi
 
-      - name: Prepare Versioned APK Files
+      - name: Process Versioning and Artifacts
         id: prepare_files
         run: |
           BUILD_NUM="${{ github.run_number }}"
-          
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          # Extract base version from app/build.gradle.kts
+          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "1.0")
+          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "1")
+
+          # Dynamic Version Resolution
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION_TAG="${GITHUB_REF#refs/tags/}"
           else
-            VERSION_TAG="v1.0.${BUILD_NUM}"
+            VERSION_TAG="v${BASE_VERSION}.${BUILD_NUM}"
           fi
-          
+
           echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
-          
+          echo "BASE_VERSION=${BASE_VERSION}" >> $GITHUB_OUTPUT
+          echo "BUILD_NUM=${BUILD_NUM}" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_OUTPUT
+
           mkdir -p output_apks
-          
-          # Find generated debug APK
           APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
-          
+
           if [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ]; then
             VERSIONED_APK="output_apks/MonoDo-${VERSION_TAG}.apk"
             LATEST_APK="output_apks/MonoDo-latest.apk"
-            
+
             cp "$APK_PATH" "$VERSIONED_APK"
             cp "$APK_PATH" "$LATEST_APK"
-            
-            echo "Successfully prepared: $VERSIONED_APK and $LATEST_APK"
+
+            APK_SIZE=$(du -h "$VERSIONED_APK" | cut -f1)
+            APK_SHA256=$(sha256sum "$VERSIONED_APK" | cut -d' ' -f1)
+
+            echo "APK_SIZE=${APK_SIZE}" >> $GITHUB_OUTPUT
+            echo "APK_SHA256=${APK_SHA256}" >> $GITHUB_OUTPUT
+
+            echo "Successfully prepared: $VERSIONED_APK and $LATEST_APK ($APK_SIZE, SHA: $APK_SHA256)"
           else
             echo "ERROR: Debug APK not found in app/build/outputs/apk/debug/"
-            ls -la app/build/outputs/apk/ || true
             exit 1
           fi
+
+      - name: Generate Professional Release Notes
+        id: release_notes
+        run: |
+          VERSION_TAG="${{ steps.prepare_files.outputs.VERSION_TAG }}"
+          BUILD_DATE="${{ steps.prepare_files.outputs.BUILD_DATE }}"
+          SHORT_SHA="${{ steps.prepare_files.outputs.SHORT_SHA }}"
+          APK_SIZE="${{ steps.prepare_files.outputs.APK_SIZE }}"
+          APK_SHA256="${{ steps.prepare_files.outputs.APK_SHA256 }}"
+          CUSTOM_NOTES="${{ github.event.inputs.release_notes || 'Automated production build generated via GitHub Actions.' }}"
+
+          cat << 'EOF' > RELEASE_BODY.md
+          ## 🖤 MonoDo — Minimalist Task Manager
+
+          > **Crafted with focus & elegance by Vishal Dhangar**  
+          > A distraction-free, 100% offline personal task manager with habit streaks and subtask tracking.
+
+          ---
+
+          ### 📊 Build Information & Telemetry
+
+          | Specification | Details |
+          |---|---|
+          | **Release Version** | `${{ steps.prepare_files.outputs.VERSION_TAG }}` |
+          | **Build Run** | `#${{ steps.prepare_files.outputs.BUILD_NUM }}` |
+          | **Commit Reference** | `${{ steps.prepare_files.outputs.SHORT_SHA }}` (`${{ github.sha }}`) |
+          | **Package Size** | `${{ steps.prepare_files.outputs.APK_SIZE }}` |
+          | **Build Timestamp** | `${{ steps.prepare_files.outputs.BUILD_DATE }}` |
+          | **Compatibility** | Android 7.0+ (API 24 to 36) |
+          | **Architecture** | Universal APK (arm64-v8a, armeabi-v7a, x86_64) |
+          | **Author & Maintainer** | **Vishal Dhangar** |
+
+          ---
+
+          ### 🌟 Key Features in this Build
+
+          * **🖤 Minimalist Monochrome UI:** Clean, high-contrast aesthetic designed for zero distraction and deep focus.
+          * **📴 100% Offline & Private:** Built on **Android Room Database (SQLite)**. Your personal data never leaves your device.
+          * **📳 Tactile Haptic Engine:** Satisfying mechanical vibrations on task completion, subtask ticks, card creation, and deletion.
+          * **🔥 Streak & Habit Tracking:** Tracks continuous productive days with a weekly activity matrix.
+          * **✅ Subtask Checklists:** Break large objectives into bite-sized items with animated progress meters.
+          * **⏰ Local Accountability Reminders:** Lightweight local notifications without battery drain.
+
+          ---
+
+          ### 📥 Download Assets
+
+          * 🔗 **[MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.prepare_files.outputs.VERSION_TAG }}/MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk)** — Direct Versioned APK
+          * 🔗 **[MonoDo-latest.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.prepare_files.outputs.VERSION_TAG }}/MonoDo-latest.apk)** — Always points to the newest stable release
+
+          ---
+
+          ### 📲 Installation Guide for Android Devices
+
+          1. **Download:** Tap either **`MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk`** or **`MonoDo-latest.apk`** under the **Assets** section below.
+          2. **⚠️ IMPORTANT NOTE (If updating from a previous version):**  
+             * If your phone shows *"App not installed / Something went wrong"*, **first uninstall any old test version** from your phone (`Settings > Apps > MonoDo > Uninstall`). This is Android's standard security rule for signature verification.
+          3. **Play Protect Prompt:**  
+             * When prompted by Google Play Protect, tap **"More details"** ➔ **"Install anyway (unsafe)"**.  
+             *(This appears because the APK is an open-source build directly from GitHub and not distributed through the Play Store).*
+          4. **Enjoy MonoDo:** Open the app and start organizing with total focus!
+
+          ---
+
+          ### 🔒 Integrity Checksum
+
+          ```text
+          SHA-256: ${{ steps.prepare_files.outputs.APK_SHA256 }}
+          ```
+
+          ---
+          *Maintained & Published by **Vishal Dhangar** • Open-Source Productivity*
+          EOF
 
       - name: Upload APK Artifact to GitHub Actions
         uses: actions/upload-artifact@v4
@@ -140,26 +234,14 @@ jobs:
           path: output_apks/*.apk
           retention-days: 30
 
-      - name: Create or Update GitHub Release
+      - name: Publish Official GitHub Release
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
           tag_name: ${{ steps.prepare_files.outputs.VERSION_TAG }}
-          name: "MonoDo ${{ steps.prepare_files.outputs.VERSION_TAG }} - by Vishal Dhangar"
-          body: |
-            ## 📱 MonoDo - Minimalist Monochrome Task Manager
-            **Created & Maintained by Vishal Dhangar**
-
-            ### 🚀 Build Information:
-            - **Version:** `${{ steps.prepare_files.outputs.VERSION_TAG }}`
-            - **Commit:** `${{ github.sha }}`
-            - **Notes:** ${{ github.event.inputs.release_notes || 'Clean APK generated automatically on push.' }}
-
-            ### 📥 Download & Installation:
-            1. Download **`MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk`** (or **`MonoDo-latest.apk`**) below.
-            2. Open the file on your Android mobile.
-            3. Tap **Install** (allow "Install Unknown Apps" if prompted).
+          name: "MonoDo ${{ steps.prepare_files.outputs.VERSION_TAG }} — by Vishal Dhangar"
+          body_path: RELEASE_BODY.md
           draft: false
           prerelease: false
           files: |

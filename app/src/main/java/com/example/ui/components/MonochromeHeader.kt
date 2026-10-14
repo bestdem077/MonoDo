@@ -235,7 +235,7 @@ fun MonochromeHeader(
                         color = ObsidianBlack
                     )
                     Text(
-                        text = "v1.0.0",
+                        text = "v${com.example.BuildConfig.VERSION_NAME} (Build ${com.example.BuildConfig.VERSION_CODE})",
                         style = MaterialTheme.typography.labelMedium,
                         color = SlateGraphite
                     )
