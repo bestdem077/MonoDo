@@ -261,7 +261,10 @@ fun TaskCard(
                     }
                 }
                 IconButton(
-                    onClick = onDeleteTask,
+                    onClick = {
+                        HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
+                        onDeleteTask()
+                    },
                     modifier = Modifier
                         .size(32.dp)
                         .testTag("delete_task_${task.id}")
@@ -500,7 +503,10 @@ private fun SubtaskItemRow(
         )
 
         IconButton(
-            onClick = onDelete,
+            onClick = {
+                HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
+                onDelete()
+            },
             modifier = Modifier.size(24.dp)
         ) {
             Icon(

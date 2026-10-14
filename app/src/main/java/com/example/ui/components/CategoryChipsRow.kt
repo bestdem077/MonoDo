@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,6 +32,7 @@ import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperCanvas
 import com.example.ui.theme.PaperSurface
 import com.example.ui.theme.SlateGraphite
+import com.example.ui.util.HapticFeedbackHelper
 
 @Composable
 fun CategoryChipsRow(
@@ -39,6 +42,8 @@ fun CategoryChipsRow(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val view = LocalView.current
+    val hapticFeedback = LocalHapticFeedback.current
 
     Row(
         modifier = modifier
@@ -70,7 +75,10 @@ fun CategoryChipsRow(
                     .clip(RoundedCornerShape(20.dp))
                     .background(backgroundColor)
                     .border(1.dp, borderColor, RoundedCornerShape(20.dp))
-                    .clickable { onCategorySelected(category) }
+                    .clickable {
+                        HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                        onCategorySelected(category)
+                    }
                     .padding(horizontal = 14.dp, vertical = 8.dp)
                     .testTag("category_chip_${category.lowercase()}"),
                 contentAlignment = Alignment.Center

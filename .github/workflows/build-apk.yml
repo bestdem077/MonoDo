@@ -41,23 +41,51 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Configure Android SDK Licenses & Secrets
+      - name: Prepare Signing Keystore, Licenses and Secrets
         run: |
-          # Automatically accept Android SDK licenses on the runner
+          echo "=== 1. Setting up debug.keystore ==="
+          # Try restoring debug.keystore from base64 if present
+          if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
+          fi
+
+          # If debug.keystore is still missing or empty, generate a valid one using JDK keytool
+          if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
+            echo "Generating new debug.keystore with keytool..."
+            keytool -genkey -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # Mirror to user home ~/.android as well
+          mkdir -p ~/.android
+          cp -f debug.keystore ~/.android/debug.keystore || true
+          ls -l debug.keystore
+
+          echo "=== 2. Setting up dummy google-services.json ==="
+          if [ ! -f app/google-services.json ]; then
+            mkdir -p app
+            echo '{"project_info":{"project_number":"123456789","project_id":"monodo-app","storage_bucket":"monodo-app.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789:android:abcdef","android_client_info":{"package_name":"com.aistudio.monodo.kxmpzq"}},"oauth_client":[],"api_key":[{"current_key":"AIzaSyDummyKey"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}]}' > app/google-services.json
+          fi
+
+          echo "=== 3. Setting up .env configuration ==="
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          elif [ ! -f .env ]; then
+            touch .env
+          fi
+
+          echo "=== 4. Accepting Android SDK Licenses ==="
           mkdir -p "$ANDROID_HOME/licenses" || true
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
 
-          # Create .env from template if missing (required for Secrets plugin)
-          if [ ! -f .env ] && [ -f .env.example ]; then
-            cp .env.example .env
-          fi
-
-          # Restore debug.keystore from base64 if needed
-          if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          fi
-
-          # Ensure gradlew exists and has execute permissions
+          echo "=== 5. Ensuring gradlew has execute permission ==="
           if [ ! -f ./gradlew ]; then
             gradle wrapper || true
           fi

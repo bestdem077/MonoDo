@@ -47,10 +47,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.util.HapticFeedbackHelper
 import com.example.data.model.TaskPriority
 import com.example.ui.theme.FocusedBackground
 import com.example.ui.theme.HairlineBorder
@@ -82,6 +85,8 @@ fun CreateTaskSheet(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
+    val hapticFeedback = LocalHapticFeedback.current
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Focus") }
@@ -456,7 +461,10 @@ fun CreateTaskSheet(
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(
-                        onClick = { subtasksList.removeAt(index) },
+                        onClick = {
+                            HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
+                            subtasksList.removeAt(index)
+                        },
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
@@ -498,6 +506,7 @@ fun CreateTaskSheet(
                 IconButton(
                     onClick = {
                         if (newSubtaskText.isNotBlank()) {
+                            HapticFeedbackHelper.performSubtaskToggleHaptic(view, hapticFeedback)
                             subtasksList.add(newSubtaskText.trim())
                             newSubtaskText = ""
                         }
@@ -523,6 +532,7 @@ fun CreateTaskSheet(
             Button(
                 onClick = {
                     if (title.isNotBlank()) {
+                        HapticFeedbackHelper.performTaskCreationHaptic(view, hapticFeedback)
                         onSaveTask(
                             title,
                             description,

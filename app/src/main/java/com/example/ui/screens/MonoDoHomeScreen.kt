@@ -50,13 +50,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.reminder.ReminderPreferences
+import com.example.ui.util.HapticFeedbackHelper
 import com.example.ui.components.CategoryChipsRow
 import com.example.ui.components.CreateTaskSheet
 import com.example.ui.components.EmptyTasksView
@@ -81,6 +84,8 @@ fun MonoDoHomeScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val view = LocalView.current
+    val hapticFeedback = LocalHapticFeedback.current
     val reminderPrefs = remember { ReminderPreferences(context) }
     var reminderSettings by remember { mutableStateOf(reminderPrefs.getSettings()) }
 
@@ -104,7 +109,10 @@ fun MonoDoHomeScreen(
         containerColor = PaperCanvas,
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { isCreateSheetOpen = true },
+                onClick = {
+                    HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                    isCreateSheetOpen = true
+                },
                 containerColor = ObsidianBlack,
                 contentColor = PaperSurface,
                 shape = CircleShape,
