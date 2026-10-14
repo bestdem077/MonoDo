@@ -38,38 +38,45 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Prepare Secrets and Keystore
+      - name: Configure Android SDK Licenses & Secrets
         run: |
-          # Create .env from template if not present
+          # Automatically accept Android SDK licenses on the runner
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
+
+          # Create .env from template if missing (required for Secrets plugin)
           if [ ! -f .env ] && [ -f .env.example ]; then
             cp .env.example .env
           fi
-          
-          # Restore debug.keystore if base64 file exists
+
+          # Restore debug.keystore from base64 if needed
           if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
 
-          # Ensure gradlew exists
+          # Ensure gradlew exists and has execute permissions
           if [ ! -f ./gradlew ]; then
-            gradle wrapper
+            gradle wrapper || true
           fi
-          chmod +x ./gradlew
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+          fi
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          if [ -f ./gradlew ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Prepare Versioned APK Files
         id: prepare_files
         run: |
           BUILD_NUM="${{ github.run_number }}"
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION_TAG="${GITHUB_REF#refs/tags/}"
@@ -81,17 +88,20 @@ jobs:
           
           mkdir -p output_apks
           
-          ORIGINAL_APK="app/build/outputs/apk/debug/app-debug.apk"
-          if [ -f "$ORIGINAL_APK" ]; then
+          # Find generated debug APK
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          
+          if [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ]; then
             VERSIONED_APK="output_apks/MonoDo-${VERSION_TAG}.apk"
             LATEST_APK="output_apks/MonoDo-latest.apk"
             
-            cp "$ORIGINAL_APK" "$VERSIONED_APK"
-            cp "$ORIGINAL_APK" "$LATEST_APK"
+            cp "$APK_PATH" "$VERSIONED_APK"
+            cp "$APK_PATH" "$LATEST_APK"
             
             echo "Successfully prepared: $VERSIONED_APK and $LATEST_APK"
           else
-            echo "APK file not found at expected path: $ORIGINAL_APK"
+            echo "ERROR: Debug APK not found in app/build/outputs/apk/debug/"
+            ls -la app/build/outputs/apk/ || true
             exit 1
           fi
 
@@ -105,6 +115,7 @@ jobs:
       - name: Create or Update GitHub Release
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           tag_name: ${{ steps.prepare_files.outputs.VERSION_TAG }}
           name: "MonoDo ${{ steps.prepare_files.outputs.VERSION_TAG }} - by Vishal Dhangar"
@@ -112,16 +123,15 @@ jobs:
             ## 📱 MonoDo - Minimalist Monochrome Task Manager
             **Created & Maintained by Vishal Dhangar**
 
-            ### 🚀 What's New in this Build:
-            - Automated Continuous Integration build: `${{ steps.prepare_files.outputs.VERSION_TAG }}`
-            - Commit: `${{ github.sha }}`
-            - Note: ${{ github.event.inputs.release_notes || 'Clean build generated automatically on git push.' }}
+            ### 🚀 Build Information:
+            - **Version:** `${{ steps.prepare_files.outputs.VERSION_TAG }}`
+            - **Commit:** `${{ github.sha }}`
+            - **Notes:** ${{ github.event.inputs.release_notes || 'Clean APK generated automatically on push.' }}
 
             ### 📥 Download & Installation:
-            1. Download **`MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk`** or **`MonoDo-latest.apk`** below.
-            2. Open the downloaded `.apk` file on your Android device.
-            3. If prompted, allow **"Install unknown apps"** in your phone settings.
-            4. Enjoy your minimalist, offline-first task tracker!
+            1. Download **`MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk`** (or **`MonoDo-latest.apk`**) below.
+            2. Open the file on your Android mobile.
+            3. Tap **Install** (allow "Install Unknown Apps" if prompted).
           draft: false
           prerelease: false
           files: |
