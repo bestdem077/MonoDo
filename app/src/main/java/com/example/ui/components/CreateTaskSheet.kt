@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import com.example.ui.theme.CategoryTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
@@ -61,6 +63,7 @@ import com.example.ui.theme.LightPill
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperCanvas
 import com.example.ui.theme.PaperSurface
+import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.SlateGraphite
 import com.example.ui.theme.SoftBorderGrey
 import java.text.SimpleDateFormat
@@ -89,15 +92,17 @@ fun CreateTaskSheet(
     val hapticFeedback = LocalHapticFeedback.current
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Focus") }
+    var selectedCategory by remember { mutableStateOf("Work") }
     var selectedPriority by remember { mutableStateOf(TaskPriority.MEDIUM) }
     var selectedDueDate by remember { mutableStateOf<Long?>(null) }
     var newSubtaskText by remember { mutableStateOf("") }
     val subtasksList = remember { mutableStateListOf<String>() }
     var newTagText by remember { mutableStateOf("") }
     val tagsList = remember { mutableStateListOf<String>() }
+    var isCustomCategorySelected by remember { mutableStateOf(false) }
+    var customCategoryText by remember { mutableStateOf("") }
 
-    val categories = listOf("Focus", "Work", "Personal", "Ideas", "General")
+    val presetCategories = listOf("Work", "Personal", "Health", "Focus", "Ideas")
 
     val calendar = Calendar.getInstance()
     val datePickerDialog = remember {
@@ -250,7 +255,7 @@ fun CreateTaskSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Category Selector
+            // Color-Coded Category Selector
             Text(
                 text = "CATEGORY",
                 style = MaterialTheme.typography.labelSmall,
@@ -260,25 +265,122 @@ fun CreateTaskSheet(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                categories.forEach { cat ->
-                    val isSelected = cat == selectedCategory
+                presetCategories.forEach { cat ->
+                    val isSelected = !isCustomCategorySelected && cat.equals(selectedCategory, ignoreCase = true)
+                    val style = CategoryTheme.getStyle(cat)
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .background(if (isSelected) ObsidianBlack else LightPill)
-                            .clickable { selectedCategory = cat }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .background(if (isSelected) ObsidianBlack else style.backgroundColor)
+                            .border(
+                                1.dp,
+                                if (isSelected) ObsidianBlack else style.borderColor,
+                                RoundedCornerShape(16.dp)
+                            )
+                            .clickable {
+                                isCustomCategorySelected = false
+                                selectedCategory = cat
+                            }
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                            .testTag("create_category_${cat.lowercase()}"),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = cat,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isSelected) PaperSurface else ObsidianBlack,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(style.accentColor)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = cat,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) PaperSurface else style.textColor,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                // Custom category pill
+                val isCustomActive = isCustomCategorySelected
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isCustomActive) ObsidianBlack else PaperCanvas)
+                        .border(
+                            1.dp,
+                            if (isCustomActive) ObsidianBlack else HairlineBorder,
+                            RoundedCornerShape(16.dp)
                         )
+                        .clickable { isCustomCategorySelected = true }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                        .testTag("create_category_custom"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Custom Category",
+                            tint = if (isCustomActive) PaperSurface else SlateGraphite,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isCustomActive && customCategoryText.isNotBlank()) customCategoryText.trim() else "Custom",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isCustomActive) PaperSurface else SlateGraphite,
+                            fontWeight = if (isCustomActive) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // Input field for custom category if selected
+            AnimatedVisibility(visible = isCustomCategorySelected) {
+                Column(modifier = Modifier.padding(top = 10.dp)) {
+                    OutlinedTextField(
+                        value = customCategoryText,
+                        onValueChange = { customCategoryText = it },
+                        placeholder = { Text("Enter custom category name...", color = SlateGraphite) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("custom_category_sheet_input"),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(color = ObsidianBlack),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = ObsidianBlack,
+                            unfocusedTextColor = ObsidianBlack,
+                            cursorColor = ObsidianBlack,
+                            focusedBorderColor = SoftBorderGrey,
+                            unfocusedBorderColor = HairlineBorder,
+                            focusedContainerColor = FocusedBackground,
+                            unfocusedContainerColor = PaperCanvas
+                        )
+                    )
+                    if (customCategoryText.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Preview: ",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SlateGraphite
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            CategoryTag(category = customCategoryText.trim())
+                        }
                     }
                 }
             }
@@ -366,7 +468,7 @@ fun CreateTaskSheet(
                         }
                     },
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(ObsidianBlack)
                         .testTag("add_tag_btn")
@@ -375,7 +477,7 @@ fun CreateTaskSheet(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Tag",
                         tint = PaperSurface,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -512,7 +614,7 @@ fun CreateTaskSheet(
                         }
                     },
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(ObsidianBlack)
                         .testTag("modal_subtask_add_btn")
@@ -521,7 +623,7 @@ fun CreateTaskSheet(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Subtask",
                         tint = PaperSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -533,10 +635,15 @@ fun CreateTaskSheet(
                 onClick = {
                     if (title.isNotBlank()) {
                         HapticFeedbackHelper.performTaskCreationHaptic(view, hapticFeedback)
+                        val finalCategory = if (isCustomCategorySelected && customCategoryText.isNotBlank()) {
+                            customCategoryText.trim()
+                        } else {
+                            selectedCategory
+                        }
                         onSaveTask(
                             title,
                             description,
-                            selectedCategory,
+                            finalCategory,
                             tagsList.toList(),
                             selectedPriority,
                             selectedDueDate,
@@ -552,7 +659,7 @@ fun CreateTaskSheet(
                     .testTag("save_task_button"),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = ObsidianBlack,
+                    containerColor = RoyalBlue,
                     contentColor = PaperSurface,
                     disabledContainerColor = Color(0xFFD6D6D0),
                     disabledContentColor = Color(0xFF8E8E8A)

@@ -116,8 +116,8 @@ jobs:
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
 
           # Extract base version from app/build.gradle.kts
-          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "1.0")
-          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "1")
+          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "1.1.0")
+          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "2")
 
           # Dynamic Version Resolution
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
@@ -187,14 +187,16 @@ jobs:
 
           ---
 
-          ### 🌟 Key Features in this Build
-
-          * **🖤 Minimalist Monochrome UI:** Clean, high-contrast aesthetic designed for zero distraction and deep focus.
-          * **📴 100% Offline & Private:** Built on **Android Room Database (SQLite)**. Your personal data never leaves your device.
-          * **📳 Tactile Haptic Engine:** Satisfying mechanical vibrations on task completion, subtask ticks, card creation, and deletion.
+          ### 🌟 Key Features in this Release (v1.1.0)
+          
+          * **🖤 Minimalist Monochrome UI with Royal Blue Accents:** Refined Swiss design aesthetic with vibrant Royal Blue highlights on active tabs, center FAB, streak badges, and action controls.
+          * **📝 Local Notes Workspace:** Complete Room-backed notes manager with title/content search, custom categories, and pinning.
+          * **📴 100% Offline, Clean & Private:** Production-ready zero dummy data. All tasks, notes, checklists, and streak counters are stored locally on your device in Android Room Database (SQLite).
+          * **📳 Tactile Haptic Engine:** Satisfying mechanical vibrations on task completion, subtask ticks, creation, and deletion.
           * **🔥 Streak & Habit Tracking:** Tracks continuous productive days with a weekly activity matrix.
           * **✅ Subtask Checklists:** Break large objectives into bite-sized items with animated progress meters.
           * **⏰ Local Accountability Reminders:** Lightweight local notifications without battery drain.
+          * **🛡️ One-Time Setup Guarantee:** Persistent onboarding that saves your profile once and never interrupts your workflow.
 
           ---
 

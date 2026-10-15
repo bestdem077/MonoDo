@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+
+    <!-- Subtle soft shadow / outer backing circle -->
+    <path
+        android:pathData="M60,6 A54,54 0 1 1 59.9,6 Z"
+        android:fillColor="#111827" />
+
+    <!-- Inner crisp clipboard / task card emblem -->
+    <path
+        android:pathData="M38,30 L82,30 A10,10 0 0 1 92,40 L92,84 A10,10 0 0 1 82,94 L38,94 A10,10 0 0 1 28,84 L28,40 A10,10 0 0 1 38,30 Z"
+        android:strokeWidth="3.5"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="#1F2937" />
+
+    <!-- Top clip tab with Royal Blue accent highlight -->
+    <path
+        android:pathData="M49,25 L71,25 A4,4 0 0 1 75,29 L75,34 A2,2 0 0 1 73,36 L47,36 A2,2 0 0 1 45,34 L45,29 A4,4 0 0 1 49,25 Z"
+        android:fillColor="#2563EB" />
+
+    <!-- Clip metal grip bar -->
+    <path
+        android:pathData="M52,30 L68,30"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+
+    <!-- Bold, crisp checkmark in bright white / royal blue tip -->
+    <path
+        android:pathData="M43,62 L54,73 L77,48"
+        android:strokeWidth="6"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Horizontal line 1 (done indicator) -->
+    <path
+        android:pathData="M44,82 L76,82"
+        android:strokeWidth="3"
+        android:strokeColor="#60A5FA"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Subtle accent badge dot -->
+    <path
+        android:pathData="M84,38 A4,4 0 1 1 83.9,38 Z"
+        android:fillColor="#3B82F6" />
+</vector>

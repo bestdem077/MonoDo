@@ -87,7 +87,8 @@ fun TaskCard(
     onAddSubtask: (title: String) -> Unit,
     onDeleteSubtask: (subtaskId: String) -> Unit,
     onDeleteTask: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCategoryClick: ((String) -> Unit)? = null
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var newSubtaskText by remember { mutableStateOf("") }
@@ -182,21 +183,11 @@ fun TaskCard(
                     // Priority Pill
                     PriorityBadge(priority = task.priority)
 
-                    // Category Pill
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(LightPill)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = task.category,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ObsidianBlack,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 10.sp
-                        )
-                    }
+                    // Color-Coded Category Tag
+                    CategoryTag(
+                        category = task.category,
+                        onClick = onCategoryClick?.let { { it(task.category) } }
+                    )
 
                     // Tags Pills
                     task.tags.take(2).forEach { tag ->

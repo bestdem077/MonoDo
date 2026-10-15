@@ -20,6 +20,13 @@ val SubtleFill = Color(0xFFF6F5F2)           // Text field and item backgrounds
 val CompletedText = Color(0xFFA0A09B)        // Strikethrough/completed text tone
 val AccentDot = Color(0xFF000000)            // Pure black accent
 
+// Modern Royal Blue Accent (Curated highlight color requested by user)
+val RoyalBlue = Color(0xFF2563EB)              // Primary vivid royal blue
+val RoyalBlueHover = Color(0xFF1D4ED8)         // Darker royal blue for pressed state
+val RoyalBlueSoft = Color(0xFFEFF6FF)          // Very soft royal blue background tint
+val RoyalBlueBorder = Color(0xFFBFDBFE)        // Subtle blue border outline
+val RoyalBlueMuted = Color(0xFF3B82F6)         // Medium vibrant blue highlight
+
 // Dark mode monochrome equivalents
 val DarkCanvas = Color(0xFF0E0E0E)
 val DarkSurface = Color(0xFF181818)
