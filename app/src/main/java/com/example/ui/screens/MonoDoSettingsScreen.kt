@@ -499,7 +499,7 @@ fun MonoDoSettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Version 2.0.0 • 100% Offline & Private",
+                    text = "Version 2.0.1 • 100% Offline & Private",
                     style = MaterialTheme.typography.labelSmall,
                     color = SlateGraphite
                 )

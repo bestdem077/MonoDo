@@ -2,7 +2,7 @@
     <string name="app_name">MonoDo</string>
     <string name="developer_name">Vishal D.</string>
     <string name="crafted_by">Created by Vishal D.</string>
-    <string name="app_version">Version 2.0.0</string>
+    <string name="app_version">Version 2.0.1</string>
     <string name="app_tagline">Minimalist Monochrome Task Manager</string>
     <string name="widget_name">MonoDo Today</string>
 </resources>

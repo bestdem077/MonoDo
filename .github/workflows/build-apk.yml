@@ -116,8 +116,8 @@ jobs:
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
 
           # Extract base version from app/build.gradle.kts
-          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "2.0.0")
-          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "3")
+          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "2.0.1")
+          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "4")
 
           # Dynamic Version Resolution
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
