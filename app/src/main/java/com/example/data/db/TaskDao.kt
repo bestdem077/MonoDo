@@ -11,17 +11,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TaskDao {
-    @Query("SELECT * FROM tasks ORDER BY isCompleted ASC, createdAt DESC")
+    @Query("SELECT * FROM tasks ORDER BY createdAt DESC")
     fun getAllTasks(): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE id = :id")
+    @Query("SELECT * FROM tasks WHERE id = :id LIMIT 1")
     suspend fun getTaskById(id: Long): TaskEntity?
 
-    @Query("SELECT * FROM tasks WHERE id = :id")
+    @Query("SELECT * FROM tasks WHERE id = :id LIMIT 1")
     fun getTaskByIdFlow(id: Long): Flow<TaskEntity?>
-
-    @Query("SELECT COUNT(*) FROM tasks")
-    suspend fun getTaskCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: TaskEntity): Long
@@ -40,4 +37,7 @@ interface TaskDao {
 
     @Query("DELETE FROM tasks")
     suspend fun deleteAllTasks()
+
+    @Query("SELECT COUNT(*) FROM tasks")
+    suspend fun getTaskCount(): Int
 }

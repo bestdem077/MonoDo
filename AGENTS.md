@@ -7,7 +7,7 @@ This document serves as the single source of truth for AI agents and developers 
 ## 1. Project Overview & Philosophy
 
 - **App Name:** MonoDo
-- **Version:** 1.1.0 (versionCode: 2)
+- **Version:** 2.0.0 (versionCode: 3)
 - **Creator / Branding:** Created by Vishal D. (Vishal Dhangar)
 - **Platform:** Android (Jetpack Compose, Material 3, Kotlin Coroutines & Flow, Room Database)
 - **Core Value Proposition:** 100% offline, privacy-focused, distraction-free minimalist productivity workspace.
@@ -30,19 +30,21 @@ This document serves as the single source of truth for AI agents and developers 
    - The logo displayed on the onboarding screen is the emboldened MonoDo emblem vector (`R.drawable.ic_monodo_logo`), **NEVER** a bare letter "M".
 
 3. **NAVIGATION TABS (4 PRIMARY DESTINATIONS):**
-   - **Tasks:** Active tasks, subtasks checklist, color-coded category filter bar, search query, priority scheduling, daily streak counter, collapsible completed section.
+   - **Tasks:** Inline Quick-Add bar + 1-Tap Quick Deadline Chips (`Today`, `Tomorrow`, `This Weekend`, `Next Week`), 7-Day Habit Dot Matrix Tracker, active tasks with `pointerInput` horizontal swipe-to-complete and swipe-for-actions (`Today`, `Tomorrow`, `Delete`), Zen Focus Mode fullscreen canvas, subtasks checklist, custom category filter bar with semantic palette picker, smart sorting & filtering sheet, daily streak counter, Swiss ink-stamp celebration badge, collapsible completed section.
    - **Stats:** Weekly completion bar chart (7-day activity), daily totals, productivity analytics.
    - **Center Floating '+' Button:** Royal Blue elevated circular pill that opens the task creation bottom sheet.
    - **Tools:** Replaces the old "Focus Tools" / "Scratchpad". Contains:
      1. **Notes Application:** Room database-backed notes with category pills, pinning, instant title/body search, note detail viewer/editor, and deletion.
      2. **Pomodoro / Focus Timer:** 25/5 min focus sessions, audio tick toggles, full focus mode.
-     3. **Quick Utilities:** Minimal clean utilities.
-   - **Settings:** Profile customization (User Name, Workspace Title), Daily Reminder alarm scheduler, Data Management (Export JSON, Import JSON, Clear Completed Tasks, Reset All Data & Setup), and Developer credits.
+     3. **Home Widget (`MonoDo Today`):** Live interactive widget preview and 1-tap launcher pinning.
+   - **Settings:** Profile customization (User Name, Workspace Title), Daily Reminder alarm scheduler, Data Management (1-Tap Offline Backup & Restore `.json`, Clear Completed Tasks, Reset All Data & Setup), and Developer credits.
 
 4. **STORAGE & PERSISTENCE:**
-   - **Room Database (`AppDatabase.kt`, Version 5):**
+   - **Room Database (`AppDatabase.kt`, Version 6):**
      - `TaskEntity` + `TaskDao`: Primary task and subtask persistence.
      - `NoteEntity` + `NoteDao`: Full Notes application storage (`notes` table).
+     - `HabitEntity` + `HabitLogEntity` + `HabitDao`: 7-Day Habit Dot Matrix persistence.
+     - `CustomCategoryEntity` + `CustomCategoryDao`: Custom user categories with semantic color hexes.
    - **SharedPreferences (`UserProfileManager.kt`):**
      - User's name, custom workspace title, and `isOnboarded` boolean flag with `commit()`.
    - **Daily Reminder Preferences (`DailyReminderPreferences.kt`):**

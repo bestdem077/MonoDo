@@ -19,5 +19,5 @@ enum class NavigationTab(
     TASKS("Tasks", Icons.Filled.CheckCircle, Icons.Outlined.CheckCircleOutline),
     STATS("Stats", Icons.Filled.BarChart, Icons.Outlined.BarChart),
     TOOLS("Tools", Icons.Filled.Construction, Icons.Outlined.Construction),
-    SETTINGS("User", Icons.Filled.Person, Icons.Outlined.PersonOutline)
+    SETTINGS("Settings", Icons.Filled.Person, Icons.Outlined.PersonOutline)
 }

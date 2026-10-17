@@ -1,17 +1,17 @@
 package com.example.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,975 +20,696 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.R
-import com.example.data.user.UserProfile
+import com.example.data.reminder.ReminderPreferences
+import com.example.data.reminder.ReminderScheduler
 import com.example.ui.theme.DateTileBackground
-import com.example.ui.theme.FocusedBackground
 import com.example.ui.theme.HairlineBorder
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperCanvas
 import com.example.ui.theme.PaperSurface
+import com.example.ui.theme.RoyalBlue
+import com.example.ui.theme.RoyalBlueSoft
 import com.example.ui.theme.SlateGraphite
-import com.example.ui.theme.SoftBorderGrey
-import com.example.ui.util.HapticFeedbackHelper
 import com.example.ui.viewmodel.TaskViewModel
-import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun MonoDoSettingsScreen(
     viewModel: TaskViewModel,
-    userProfile: UserProfile,
-    onUpdateProfile: (userName: String, workspaceTitle: String) -> Unit,
-    isReminderEnabled: Boolean,
-    onOpenReminderSettings: () -> Unit,
-    onToggleReminder: (Boolean) -> Unit,
-    onResetAllData: () -> Unit = {},
+    onResetAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val view = LocalView.current
-    val haptic = LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
+    val userProfile by viewModel.userProfile.collectAsState()
+    val reminderPrefs = remember { ReminderPreferences(context) }
+    var reminderSettings by remember { mutableStateOf(reminderPrefs.getSettings()) }
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
-    var editUserName by remember { mutableStateOf(userProfile.userName) }
-    var editWorkspaceTitle by remember { mutableStateOf(userProfile.workspaceTitle) }
+    var showClearTasksDialog by remember { mutableStateOf(false) }
+    var showResetAllDialog by remember { mutableStateOf(false) }
 
-    var showAboutDialog by remember { mutableStateOf(false) }
-    var showImportDialog by remember { mutableStateOf(false) }
-    var importJsonText by remember { mutableStateOf("") }
-    var showClearConfirmDialog by remember { mutableStateOf(false) }
-    var showResetAllConfirmDialog by remember { mutableStateOf(false) }
+    var hasLocalSnapshot by remember { mutableStateOf(viewModel.hasInternalBackupFile()) }
 
-    LazyColumn(
+    val exportDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val json = viewModel.exportJsonBackup()
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                }
+                viewModel.saveBackupToInternalStorage()
+                hasLocalSnapshot = true
+                Toast.makeText(context, "Backup saved to device (.json)!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error saving file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val jsonString = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                val success = viewModel.importJsonBackup(jsonString)
+                if (success) {
+                    Toast.makeText(context, "Backup successfully restored!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to parse backup JSON file", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error importing file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val formattedReminderTime = remember(reminderSettings.hour, reminderSettings.minute) {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, reminderSettings.hour)
+            set(Calendar.MINUTE, reminderSettings.minute)
+        }
+        val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
+        sdf.format(cal.time)
+    }
+
+    val showTimePicker = {
+        TimePickerDialog(
+            context,
+            { _, hour, minute ->
+                reminderPrefs.saveSettings(reminderSettings.isEnabled, hour, minute)
+                reminderSettings = reminderSettings.copy(hour = hour, minute = minute)
+                if (reminderSettings.isEnabled) {
+                    ReminderScheduler.scheduleDailyReminder(context, hour, minute)
+                }
+            },
+            reminderSettings.hour,
+            reminderSettings.minute,
+            false
+        ).show()
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .background(PaperCanvas),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(PaperCanvas)
+            .padding(horizontal = 20.dp)
+            .verticalScroll(rememberScrollState())
+            .testTag("mono_do_settings_screen")
     ) {
-        // Page Title
-        item {
-            Column {
-                Text(
-                    text = "PREFERENCES",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SlateGraphite,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Settings & Profile",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = ObsidianBlack,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.5).sp
-                )
-            }
-        }
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // 1. Personalized User Profile & Workspace Card
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(20.dp))
-                    .padding(20.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(ObsidianBlack),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (userProfile.userName.isNotBlank()) userProfile.userName.take(1).uppercase() else "M",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = PaperSurface,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+        Text(
+            text = "Settings",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = ObsidianBlack,
+            letterSpacing = (-0.5).sp
+        )
 
-                    Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = "Preferences, notifications & offline storage",
+            style = MaterialTheme.typography.bodySmall,
+            color = SlateGraphite
+        )
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (userProfile.userName.isNotBlank()) userProfile.userName else "Personal Workspace",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = ObsidianBlack,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Workspace: ${userProfile.workspaceTitle.ifBlank { "MonoDo" }}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SlateGraphite
-                        )
-                    }
+        Spacer(modifier = Modifier.height(20.dp))
 
-                    // Edit Profile Button
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(DateTileBackground)
-                            .clickable {
-                                editUserName = userProfile.userName
-                                editWorkspaceTitle = userProfile.workspaceTitle
-                                showEditProfileDialog = true
-                            }
-                            .testTag("edit_profile_btn"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Profile & Workspace Name",
-                            tint = ObsidianBlack,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Profile Badges
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(DateTileBackground)
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "100% Offline",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ObsidianBlack,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(DateTileBackground)
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "Private SQLite",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ObsidianBlack,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(DateTileBackground)
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "Zero Telemetry",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ObsidianBlack,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Notification & Daily Reminders Section
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(20.dp))
-                    .padding(20.dp)
-            ) {
-                Text(
-                    text = "NOTIFICATIONS & REMINDERS",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SlateGraphite,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
+        // 1. User Profile Card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(PaperSurface)
+                .border(1.dp, HairlineBorder, RoundedCornerShape(16.dp))
+                .clickable { showEditProfileDialog = true }
+                .padding(18.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(RoyalBlueSoft),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = RoyalBlue,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column {
+                            Text(
+                                text = userProfile.userName.ifBlank { "MonoDo User" },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = ObsidianBlack
+                            )
+                            Text(
+                                text = userProfile.workspaceTitle.ifBlank { "MonoDo Workspace" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SlateGraphite
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Profile",
+                        tint = SlateGraphite,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                if (userProfile.birthDate.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DateTileBackground)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Cake,
+                            contentDescription = "Birth Date",
+                            tint = RoyalBlue,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Daily Habit Reminder",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "Born: ${userProfile.birthDate}",
+                            style = MaterialTheme.typography.labelSmall,
                             color = ObsidianBlack,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.Medium
                         )
-                        Text(
-                            text = if (isReminderEnabled) "Scheduled daily notification active" else "Turn on to maintain streaks daily",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SlateGraphite
-                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // 2. Daily Focus Reminder Card
+        Text(
+            text = "REMINDERS",
+            style = MaterialTheme.typography.labelSmall,
+            color = SlateGraphite,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(PaperSurface)
+                .border(1.dp, HairlineBorder, RoundedCornerShape(16.dp))
+                .padding(18.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(DateTileBackground),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsActive,
+                                contentDescription = null,
+                                tint = if (reminderSettings.isEnabled) RoyalBlue else SlateGraphite,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Daily Focus Alert",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ObsidianBlack
+                            )
+                            Text(
+                                text = "Prompts you once per day",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SlateGraphite
+                            )
+                        }
                     }
 
                     Switch(
-                        checked = isReminderEnabled,
-                        onCheckedChange = {
-                            HapticFeedbackHelper.performSelectionHaptic(view, haptic)
-                            onToggleReminder(it)
+                        checked = reminderSettings.isEnabled,
+                        onCheckedChange = { enabled ->
+                            reminderPrefs.saveSettings(enabled, reminderSettings.hour, reminderSettings.minute)
+                            reminderSettings = reminderSettings.copy(isEnabled = enabled)
+                            if (enabled) {
+                                ReminderScheduler.scheduleDailyReminder(context, reminderSettings.hour, reminderSettings.minute)
+                            } else {
+                                ReminderScheduler.cancelDailyReminder(context)
+                            }
                         },
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = PaperSurface,
-                            checkedTrackColor = ObsidianBlack,
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = RoyalBlue,
                             uncheckedThumbColor = SlateGraphite,
                             uncheckedTrackColor = DateTileBackground
                         )
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(DateTileBackground)
-                        .clickable {
-                            HapticFeedbackHelper.performSelectionHaptic(view, haptic)
-                            onOpenReminderSettings()
+                if (reminderSettings.isEnabled) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(PaperCanvas)
+                            .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp))
+                            .clickable { showTimePicker() }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Alarm,
+                                contentDescription = null,
+                                tint = RoyalBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = formattedReminderTime,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = ObsidianBlack
+                            )
                         }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = "Reminder Timing",
-                            tint = ObsidianBlack,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
+
                         Text(
-                            text = "Configure Reminder Time & Sound",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = ObsidianBlack,
-                            fontWeight = FontWeight.Medium
+                            text = "Change Time",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = RoyalBlue,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Open",
-                        tint = SlateGraphite,
-                        modifier = Modifier.size(18.dp)
-                    )
                 }
             }
         }
 
-        // 3. Data Management (Offline Backup & Restore)
-        item {
-            Column(
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // 3. Data Management
+        Text(
+            text = "DATA MANAGEMENT",
+            style = MaterialTheme.typography.labelSmall,
+            color = SlateGraphite,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(PaperSurface)
+                .border(1.dp, HairlineBorder, RoundedCornerShape(16.dp))
+        ) {
+            SettingsActionRow(
+                icon = Icons.Default.FileDownload,
+                iconColor = RoyalBlue,
+                title = "Export Backup (.json)",
+                subtitle = "Save offline .json backup to device storage",
+                onClick = {
+                    try {
+                        viewModel.saveBackupToInternalStorage()
+                        hasLocalSnapshot = true
+                        exportDocumentLauncher.launch("monodo_backup.json")
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Saved local snapshot backup!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(20.dp))
-                    .padding(20.dp)
-            ) {
-                Text(
-                    text = "DATA MANAGEMENT (OFFLINE BACKUP)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SlateGraphite,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
+                    .height(1.dp)
+                    .background(HairlineBorder)
+            )
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Download / Export Backup Button
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DateTileBackground)
-                        .clickable {
-                            HapticFeedbackHelper.performTaskCreationHaptic(view, haptic)
-                            val json = viewModel.exportTasksAsJson()
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("MonoDo Backup", json))
-
-                            // Trigger Android share sheet
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, json)
-                                type = "application/json"
-                            }
-                            context.startActivity(Intent.createChooser(sendIntent, "Export Backup"))
-                            Toast.makeText(context, "Backup copied to clipboard and ready to save!", Toast.LENGTH_LONG).show()
-                        }
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = "Export Backup",
-                            tint = ObsidianBlack,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Export Data (JSON Backup)",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ObsidianBlack,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Save tasks to local file or clipboard",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SlateGraphite
-                            )
+            SettingsActionRow(
+                icon = Icons.Default.FileUpload,
+                iconColor = RoyalBlue,
+                title = "Import Backup (.json)",
+                subtitle = if (hasLocalSnapshot) "Pick a .json file or restore saved device backup" else "Restore tasks, notes & habits from a .json file",
+                onClick = {
+                    try {
+                        importLauncher.launch("*/*")
+                    } catch (e: Exception) {
+                        if (viewModel.restoreFromInternalStorage()) {
+                            Toast.makeText(context, "Restored from device snapshot!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Could not open file picker", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Export",
-                        tint = SlateGraphite,
-                        modifier = Modifier.size(18.dp)
-                    )
                 }
+            )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Upload / Import Backup Button
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DateTileBackground)
-                        .clickable {
-                            HapticFeedbackHelper.performSelectionHaptic(view, haptic)
-                            importJsonText = ""
-                            showImportDialog = true
-                        }
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Upload,
-                            contentDescription = "Import Backup",
-                            tint = ObsidianBlack,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Import Data (Restore JSON)",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ObsidianBlack,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Restore tasks and checklists from backup",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SlateGraphite
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Import",
-                        tint = SlateGraphite,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Clear Completed Tasks
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DateTileBackground)
-                        .clickable {
-                            HapticFeedbackHelper.performDeleteHaptic(view, haptic)
-                            showClearConfirmDialog = true
-                        }
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.CleaningServices,
-                            contentDescription = "Clear Completed",
-                            tint = ObsidianBlack,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Clear Completed Tasks",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ObsidianBlack,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Declutter old completed tasks from database",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SlateGraphite
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Clear",
-                        tint = SlateGraphite,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Reset All Data & Setup (Erases data and restores initial onboarding)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DateTileBackground)
-                        .clickable {
-                            HapticFeedbackHelper.performDeleteHaptic(view, haptic)
-                            showResetAllConfirmDialog = true
-                        }
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteForever,
-                            contentDescription = "Reset All Data",
-                            tint = ObsidianBlack,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Reset All Data & Setup",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ObsidianBlack,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Erase tasks, notes & reset onboarding",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SlateGraphite
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Reset",
-                        tint = SlateGraphite,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-
-        // 4. About & Information Card (Relocated from Top Header "i" Button)
-        item {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(20.dp))
-                    .padding(20.dp)
-            ) {
+                    .height(1.dp)
+                    .background(HairlineBorder)
+            )
+
+            SettingsActionRow(
+                icon = Icons.Default.DeleteSweep,
+                iconColor = SlateGraphite,
+                title = "Clear Completed Tasks",
+                subtitle = "Permanently remove finished items",
+                onClick = { showClearTasksDialog = true }
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(HairlineBorder)
+            )
+
+            SettingsActionRow(
+                icon = Icons.Default.RestartAlt,
+                iconColor = Color(0xFFDC2626),
+                title = "Reset All Data & Setup",
+                subtitle = "Wipes database and restarts onboarding",
+                onClick = { showResetAllDialog = true }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // 4. Branding & Credits
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(PaperSurface)
+                .border(1.dp, HairlineBorder, RoundedCornerShape(16.dp))
+                .padding(18.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "ABOUT & INFORMATION",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SlateGraphite,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
+                    text = "MonoDo",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    color = ObsidianBlack,
+                    letterSpacing = 0.5.sp
                 )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Clickable row to open About info dialog
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DateTileBackground)
-                        .clickable {
-                            HapticFeedbackHelper.performSelectionHaptic(view, haptic)
-                            showAboutDialog = true
-                        }
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "About App",
-                            tint = ObsidianBlack,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "About ${userProfile.workspaceTitle.ifBlank { "MonoDo" }}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ObsidianBlack,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Architecture, privacy & credits",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SlateGraphite
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Details",
-                        tint = SlateGraphite,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Clean Version row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "App Version",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SlateGraphite
-                    )
-                    Text(
-                        text = stringResource(R.string.app_version),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ObsidianBlack,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Storage Architecture row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Storage",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SlateGraphite
-                    )
-                    Text(
-                        text = "100% Offline SQLite",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ObsidianBlack,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Version 2.0.0 • 100% Offline & Private",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SlateGraphite
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Created by Vishal D. (Vishal Dhangar)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ObsidianBlack,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
+
+        Spacer(modifier = Modifier.height(100.dp))
     }
 
-    // Modal Dialog: Edit Profile & Workspace Name
+    // Edit Profile Dialog
     if (showEditProfileDialog) {
+        var editName by remember { mutableStateOf(userProfile.userName) }
+        var editWorkspace by remember { mutableStateOf(userProfile.workspaceTitle) }
+        var editBirthDate by remember { mutableStateOf(userProfile.birthDate) }
+        var editBirthTimestamp by remember { mutableStateOf(userProfile.birthTimestamp) }
+
+        val showEditDatePicker = {
+            val cal = Calendar.getInstance()
+            if (editBirthTimestamp > 0) cal.timeInMillis = editBirthTimestamp
+            val dialog = DatePickerDialog(
+                context,
+                { _, year, month, day ->
+                    val chosen = Calendar.getInstance().apply { set(year, month, day, 0, 0, 0) }
+                    editBirthTimestamp = chosen.timeInMillis
+                    val sdf = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+                    editBirthDate = sdf.format(Date(editBirthTimestamp))
+                },
+                cal.get(Calendar.YEAR),
+                cal.get(Calendar.MONTH),
+                cal.get(Calendar.DAY_OF_MONTH)
+            )
+            dialog.show()
+        }
+
         AlertDialog(
             onDismissRequest = { showEditProfileDialog = false },
-            title = {
-                Text(
-                    text = "Edit Profile & Workspace",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = ObsidianBlack
-                )
-            },
+            title = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
             text = {
-                Column {
-                    Text(
-                        text = "Customize your displayed name and workspace title:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SlateGraphite
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = editUserName,
-                        onValueChange = { editUserName = it },
-                        label = { Text("Your Name") },
-                        placeholder = { Text("e.g. Alex", color = SlateGraphite) },
-                        modifier = Modifier.fillMaxWidth(),
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.example.ui.components.CompactFormTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
+                        placeholder = "Your Name",
                         singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = ObsidianBlack,
-                            unfocusedTextColor = ObsidianBlack,
-                            focusedBorderColor = SoftBorderGrey,
-                            unfocusedBorderColor = HairlineBorder,
-                            focusedContainerColor = FocusedBackground,
-                            unfocusedContainerColor = PaperCanvas
-                        )
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = editWorkspaceTitle,
-                        onValueChange = { editWorkspaceTitle = it },
-                        label = { Text("Workspace / App Name") },
-                        placeholder = { Text("e.g. MonoDo", color = SlateGraphite) },
-                        modifier = Modifier.fillMaxWidth(),
+                    com.example.ui.components.CompactFormTextField(
+                        value = editWorkspace,
+                        onValueChange = { editWorkspace = it },
+                        placeholder = "Workspace Title",
                         singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = ObsidianBlack,
-                            unfocusedTextColor = ObsidianBlack,
-                            focusedBorderColor = SoftBorderGrey,
-                            unfocusedBorderColor = HairlineBorder,
-                            focusedContainerColor = FocusedBackground,
-                            unfocusedContainerColor = PaperCanvas
-                        )
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DateTileBackground)
+                            .clickable { showEditDatePicker() }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (editBirthDate.isNotBlank()) editBirthDate else "Set Date of Birth",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ObsidianBlack
+                        )
+                        Icon(Icons.Default.Cake, contentDescription = null, tint = RoyalBlue)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        HapticFeedbackHelper.performSelectionHaptic(view, haptic)
-                        onUpdateProfile(editUserName.trim(), editWorkspaceTitle.trim().ifBlank { "MonoDo" })
+                        viewModel.saveUserProfile(
+                            name = editName,
+                            workspaceTitle = editWorkspace,
+                            birthDate = editBirthDate,
+                            birthTimestamp = editBirthTimestamp,
+                            reminderHour = userProfile.reminderHour,
+                            reminderMinute = userProfile.reminderMinute
+                        )
                         showEditProfileDialog = false
-                        Toast.makeText(context, "Profile updated!", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ObsidianBlack)
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
                 ) {
-                    Text("Save", color = PaperSurface, fontWeight = FontWeight.Bold)
+                    Text("Save")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showEditProfileDialog = false }) {
                     Text("Cancel", color = SlateGraphite)
                 }
-            },
-            containerColor = PaperSurface,
-            shape = RoundedCornerShape(16.dp)
+            }
         )
     }
 
-    // Modal Dialog: Relocated About MonoDo Info Dialog
-    if (showAboutDialog) {
+    // Clear Tasks Dialog
+    if (showClearTasksDialog) {
         AlertDialog(
-            onDismissRequest = { showAboutDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(ObsidianBlack),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "M",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = PaperSurface,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "About ${userProfile.workspaceTitle.ifBlank { "MonoDo" }}",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = ObsidianBlack
-                    )
-                }
-            },
-            text = {
-                Column {
-                    Text(
-                        text = stringResource(R.string.app_version),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = ObsidianBlack
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "A distraction-free, minimalist monochrome task and habit manager designed for clarity and deep focus.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SlateGraphite,
-                        lineHeight = 20.sp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(DateTileBackground)
-                            .padding(12.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = "100% Offline & Private",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = ObsidianBlack
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "All tasks, notes, checklists, and streak data remain strictly on your device in a secure local Room SQLite database.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SlateGraphite
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = "Created with focus by Vishal D.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SlateGraphite,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showAboutDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = ObsidianBlack)
-                ) {
-                    Text("Close", color = PaperSurface, fontWeight = FontWeight.Bold)
-                }
-            },
-            containerColor = PaperSurface,
-            shape = RoundedCornerShape(16.dp)
-        )
-    }
-
-    // Modal Dialog: Restore JSON Backup
-    if (showImportDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportDialog = false },
-            title = {
-                Text(
-                    text = "Restore Tasks Backup",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = ObsidianBlack
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "Paste your previously exported JSON backup below to restore your tasks:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SlateGraphite
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = importJsonText,
-                        onValueChange = { importJsonText = it },
-                        placeholder = { Text("Paste JSON here...", color = SlateGraphite) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = ObsidianBlack,
-                            unfocusedTextColor = ObsidianBlack,
-                            focusedBorderColor = SoftBorderGrey,
-                            unfocusedBorderColor = HairlineBorder,
-                            focusedContainerColor = PaperCanvas,
-                            unfocusedContainerColor = PaperCanvas
-                        )
-                    )
-                }
-            },
+            onDismissRequest = { showClearTasksDialog = false },
+            title = { Text("Clear Completed Tasks?", fontWeight = FontWeight.Bold) },
+            text = { Text("This will permanently remove all completed tasks.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        scope.launch {
-                            val count = viewModel.importTasksFromJson(importJsonText)
-                            if (count > 0) {
-                                HapticFeedbackHelper.performTaskCreationHaptic(view, haptic)
-                                Toast.makeText(context, "Successfully restored $count tasks!", Toast.LENGTH_SHORT).show()
-                                showImportDialog = false
-                            } else {
-                                Toast.makeText(context, "Invalid JSON backup format. Please check the text.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ObsidianBlack)
-                ) {
-                    Text("Restore Tasks", color = PaperSurface, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
-                    Text("Cancel", color = SlateGraphite)
-                }
-            },
-            containerColor = PaperSurface,
-            shape = RoundedCornerShape(16.dp)
-        )
-    }
-
-    // Modal Dialog: Clear Completed Tasks Confirmation
-    if (showClearConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirmDialog = false },
-            title = {
-                Text(
-                    text = "Clear Completed Tasks?",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = ObsidianBlack
-                )
-            },
-            text = {
-                Text(
-                    text = "This will permanently remove all completed tasks from your local storage to declutter your list. This action cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SlateGraphite
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        HapticFeedbackHelper.performDeleteHaptic(view, haptic)
                         viewModel.clearCompletedTasks()
-                        showClearConfirmDialog = false
-                        Toast.makeText(context, "Completed tasks cleared.", Toast.LENGTH_SHORT).show()
+                        showClearTasksDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ObsidianBlack)
                 ) {
-                    Text("Clear All", color = PaperSurface, fontWeight = FontWeight.Bold)
+                    Text("Clear")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirmDialog = false }) {
+                TextButton(onClick = { showClearTasksDialog = false }) {
                     Text("Cancel", color = SlateGraphite)
                 }
-            },
-            containerColor = PaperSurface,
-            shape = RoundedCornerShape(16.dp)
+            }
         )
     }
 
-    // Modal Dialog: Reset All Data & Setup Confirmation
-    if (showResetAllConfirmDialog) {
+    // Reset All Dialog
+    if (showResetAllDialog) {
         AlertDialog(
-            onDismissRequest = { showResetAllConfirmDialog = false },
-            title = {
-                Text(
-                    text = "Reset All App Data?",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = ObsidianBlack
-                )
-            },
-            text = {
-                Text(
-                    text = "This will permanently erase all tasks, notes, categories, and reset your workspace setup back to initial onboarding. This action cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SlateGraphite
-                )
-            },
+            onDismissRequest = { showResetAllDialog = false },
+            title = { Text("Reset All Data & Setup?", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
+            text = { Text("This will delete all tasks, notes, profile settings and return you to the initial setup screen.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        HapticFeedbackHelper.performDeleteHaptic(view, haptic)
-                        showResetAllConfirmDialog = false
-                        onResetAllData()
-                        Toast.makeText(context, "App reset to initial setup.", Toast.LENGTH_SHORT).show()
+                        viewModel.resetAllData()
+                        showResetAllDialog = false
+                        onResetAll()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ObsidianBlack)
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
                 ) {
-                    Text("Reset Everything", color = PaperSurface, fontWeight = FontWeight.Bold)
+                    Text("Reset Everything")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetAllConfirmDialog = false }) {
+                TextButton(onClick = { showResetAllDialog = false }) {
                     Text("Cancel", color = SlateGraphite)
                 }
-            },
-            containerColor = PaperSurface,
-            shape = RoundedCornerShape(16.dp)
+            }
+        )
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(DateTileBackground),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ObsidianBlack
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SlateGraphite
+                )
+            }
+        }
+
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = SlateGraphite,
+            modifier = Modifier.size(18.dp)
         )
     }
 }

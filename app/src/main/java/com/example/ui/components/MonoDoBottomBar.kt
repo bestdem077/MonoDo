@@ -36,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -45,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.navigation.NavigationTab
 import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperSurface
 import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.SlateGraphite
@@ -104,8 +102,7 @@ fun MonoDoBottomBar(
 
                 // Center Action '+' Button (Royal Blue accent pill, elevated & modern)
                 Box(
-                    modifier = Modifier
-                        .weight(1.1f),
+                    modifier = Modifier.weight(1.1f),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
@@ -156,7 +153,6 @@ fun MonoDoBottomBar(
                 )
             }
 
-            // Insets spacer for system navigation bar (3-button or gesture pill)
             Spacer(modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars))
         }
     }

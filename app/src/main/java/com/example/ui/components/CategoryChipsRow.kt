@@ -1,16 +1,14 @@
 package com.example.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,22 +50,17 @@ import com.example.ui.theme.HairlineBorder
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperCanvas
 import com.example.ui.theme.PaperSurface
+import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.SlateGraphite
-import com.example.ui.theme.SoftBorderGrey
 import com.example.ui.util.HapticFeedbackHelper
 
-/**
- * Filter bar on the Tasks screen displaying color-coded category tags.
- * Provides active category selection, count indicators, category color dots,
- * and quick-add functionality for custom categories.
- */
 @Composable
 fun CategoryChipsRow(
     categories: List<String>,
     selectedCategory: String,
     onCategorySelected: (String) -> Unit,
     categoryCounts: Map<String, Int> = emptyMap(),
-    onAddCustomCategory: ((String) -> Unit)? = null,
+    onAddCustomCategory: ((name: String, colorHex: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -77,6 +69,18 @@ fun CategoryChipsRow(
 
     var showAddDialog by remember { mutableStateOf(false) }
     var newCategoryInput by remember { mutableStateOf("") }
+    var selectedColorHex by remember { mutableStateOf("#2563EB") }
+
+    val paletteOptions = listOf(
+        "#2563EB", // Royal Blue
+        "#16A34A", // Emerald
+        "#D97706", // Amber
+        "#DC2626", // Crimson
+        "#7C3AED", // Purple
+        "#0D9488", // Teal
+        "#E11D48", // Rose
+        "#374151"  // Charcoal
+    )
 
     Row(
         modifier = modifier
@@ -96,7 +100,7 @@ fun CategoryChipsRow(
             val backgroundColor by animateColorAsState(
                 targetValue = when {
                     isSelected -> ObsidianBlack
-                    style != null -> style.backgroundColor.copy(alpha = 0.85f)
+                    style != null -> style.backgroundColor
                     else -> PaperSurface
                 },
                 animationSpec = spring(),
@@ -105,7 +109,7 @@ fun CategoryChipsRow(
 
             val textColor by animateColorAsState(
                 targetValue = when {
-                    isSelected -> PaperSurface
+                    isSelected -> Color.White
                     style != null -> style.textColor
                     else -> SlateGraphite
                 },
@@ -136,7 +140,6 @@ fun CategoryChipsRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    // Color-coded category indicator dot
                     if (style != null) {
                         Box(
                             modifier = Modifier
@@ -147,7 +150,6 @@ fun CategoryChipsRow(
                         Spacer(modifier = Modifier.width(6.dp))
                     }
 
-                    // Category label
                     Text(
                         text = category,
                         style = MaterialTheme.typography.labelMedium,
@@ -156,20 +158,19 @@ fun CategoryChipsRow(
                         letterSpacing = 0.2.sp
                     )
 
-                    // Count badge (if available and positive)
                     if (count > 0 || (isAll && count > 0)) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(if (isSelected) Color(0xFF2E2E2E) else if (style != null) style.backgroundColor else Color(0xFFECEBE5))
+                                .background(if (isSelected) Color(0xFF2E2E2E) else Color(0xFFECEBE5))
                                 .padding(horizontal = 5.dp, vertical = 1.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "$count",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isSelected) PaperSurface else if (style != null) style.textColor else SlateGraphite,
+                                color = if (isSelected) Color.White else SlateGraphite,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -179,7 +180,6 @@ fun CategoryChipsRow(
             }
         }
 
-        // Quick button to add or filter by a new custom category
         if (onAddCustomCategory != null) {
             Box(
                 modifier = Modifier
@@ -213,10 +213,7 @@ fun CategoryChipsRow(
         }
     }
 
-    // Modal Dialog to create a custom category
     if (showAddDialog && onAddCustomCategory != null) {
-        val previewStyle = if (newCategoryInput.isNotBlank()) CategoryTheme.getStyle(newCategoryInput) else null
-
         AlertDialog(
             onDismissRequest = {
                 showAddDialog = false
@@ -231,9 +228,9 @@ fun CategoryChipsRow(
                 )
             },
             text = {
-                androidx.compose.foundation.layout.Column {
+                Column {
                     Text(
-                        text = "Enter a category name. MonoDo will automatically generate an accent color tag for it.",
+                        text = "Enter a category name. MonoDo will generate a subtle accent tag for it.",
                         style = MaterialTheme.typography.bodySmall,
                         color = SlateGraphite
                     )
@@ -241,7 +238,7 @@ fun CategoryChipsRow(
                     OutlinedTextField(
                         value = newCategoryInput,
                         onValueChange = { newCategoryInput = it },
-                        placeholder = { Text("e.g. Health, Finance, Study...", color = SlateGraphite) },
+                        placeholder = { Text("e.g. Design, Reading...", color = SlateGraphite) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("custom_category_input"),
@@ -251,25 +248,51 @@ fun CategoryChipsRow(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = ObsidianBlack,
                             unfocusedTextColor = ObsidianBlack,
-                            cursorColor = ObsidianBlack,
-                            focusedBorderColor = SoftBorderGrey,
+                            cursorColor = RoyalBlue,
+                            focusedBorderColor = RoyalBlue,
                             unfocusedBorderColor = HairlineBorder,
                             focusedContainerColor = FocusedBackground,
                             unfocusedContainerColor = PaperCanvas
                         )
                     )
+                    Spacer(modifier = Modifier.size(12.dp))
+                    Text(
+                        text = "Accent Color Dot",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SlateGraphite,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        paletteOptions.forEach { hex ->
+                            val color = Color(android.graphics.Color.parseColor(hex))
+                            val isSelected = selectedColorHex == hex
 
-                    // Live preview of generated color tag
-                    if (previewStyle != null) {
-                        Spacer(modifier = Modifier.size(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Preview: ",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SlateGraphite
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            CategoryTag(category = newCategoryInput.trim())
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(
+                                        if (isSelected) 2.dp else 1.dp,
+                                        if (isSelected) ObsidianBlack else Color.Transparent,
+                                        CircleShape
+                                    )
+                                    .clickable { selectedColorHex = hex },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -279,7 +302,7 @@ fun CategoryChipsRow(
                     onClick = {
                         val clean = newCategoryInput.trim()
                         if (clean.isNotBlank()) {
-                            onAddCustomCategory(clean)
+                            onAddCustomCategory(clean, selectedColorHex)
                             onCategorySelected(clean)
                             newCategoryInput = ""
                             showAddDialog = false
@@ -289,7 +312,7 @@ fun CategoryChipsRow(
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ObsidianBlack,
-                        contentColor = PaperSurface
+                        contentColor = Color.White
                     ),
                     modifier = Modifier.testTag("confirm_add_category_btn")
                 ) {

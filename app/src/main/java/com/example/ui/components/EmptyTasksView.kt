@@ -1,6 +1,7 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,86 +10,77 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircleOutline
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.DateTileBackground
+import com.example.ui.theme.HairlineBorder
 import com.example.ui.theme.ObsidianBlack
+import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.SlateGraphite
 
 @Composable
 fun EmptyTasksView(
-    message: String = "All tasks completed.",
-    subMessage: String = "Clear space. Clear mind.",
+    hasActiveFilters: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 32.dp, vertical = 40.dp),
+            .padding(vertical = 48.dp, horizontal = 24.dp)
+            .testTag("empty_tasks_view"),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Minimalist geometric zen artwork
+        // Minimalist Zen Circle with delicate Royal Blue check icon
         Box(
-            modifier = Modifier.size(100.dp),
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(DateTileBackground)
+                .border(1.dp, HairlineBorder, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(90.dp)) {
-                val center = Offset(size.width / 2, size.height / 2)
-                // Outer subtle circle
-                drawCircle(
-                    color = Color(0xFFE2E2DC),
-                    radius = size.width / 2 - 2f,
-                    style = Stroke(width = 2f)
-                )
-                // Middle concentric ring
-                drawCircle(
-                    color = Color(0xFFD4D4CE),
-                    radius = size.width / 3,
-                    style = Stroke(width = 1.5f)
-                )
-                // Center clean checkmark
-                val checkPath = androidx.compose.ui.graphics.Path().apply {
-                    moveTo(size.width * 0.35f, size.height * 0.50f)
-                    lineTo(size.width * 0.46f, size.height * 0.62f)
-                    lineTo(size.width * 0.68f, size.height * 0.38f)
-                }
-                drawPath(
-                    path = checkPath,
-                    color = ObsidianBlack,
-                    style = Stroke(width = 3.5f, cap = StrokeCap.Round)
-                )
-            }
+            Icon(
+                imageVector = Icons.Outlined.CheckCircleOutline,
+                contentDescription = null,
+                tint = RoyalBlue,
+                modifier = Modifier.size(32.dp)
+            )
         }
 
         Spacer(modifier = Modifier.height(18.dp))
 
         Text(
-            text = message,
-            style = MaterialTheme.typography.titleLarge,
+            text = if (hasActiveFilters) "No matching tasks" else "All tasks complete",
+            style = MaterialTheme.typography.titleMedium,
             color = ObsidianBlack,
             fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
+            letterSpacing = (-0.3).sp
         )
 
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = subMessage,
+            text = if (hasActiveFilters) {
+                "Try switching categories or clearing search"
+            } else {
+                "Enjoy your focus or tap + below to add a task"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = SlateGraphite,
-            textAlign = TextAlign.Center,
-            letterSpacing = 0.5.sp
+            fontWeight = FontWeight.Normal
         )
     }
 }

@@ -2,440 +2,397 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.db.AppDatabase
-import com.example.data.db.NoteDao
-import com.example.data.db.TaskDao
+import com.example.data.model.CustomCategoryEntity
+import com.example.data.model.HabitEntity
+import com.example.data.model.HabitLogEntity
 import com.example.data.model.NoteEntity
 import com.example.data.model.SubTask
 import com.example.data.model.TaskEntity
 import com.example.data.model.TaskPriority
-import com.example.data.repository.TaskRepository
-import kotlinx.coroutines.flow.Flow
+import com.example.data.model.TaskSortOrder
+import com.example.data.reminder.ReminderPreferences
+import com.example.data.reminder.ReminderScheduler
+import com.example.data.user.UserProfile
+import com.example.data.user.UserProfileManager
+import com.example.ui.theme.CategoryTheme
+import com.example.widget.MonoDoWidgetProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
-import org.json.JSONArray
-import org.json.JSONObject
 
-data class DayActivity(
-    val dayLabel: String,
-    val dayOfMonth: Int = 1,
-    val dateString: String,
-    val completedCount: Int,
-    val isToday: Boolean,
-    val dayFullName: String = ""
-)
+class TaskViewModel(application: Application) : AndroidViewModel(application) {
+    private val database = AppDatabase.getDatabase(application)
+    private val taskDao = database.taskDao()
+    private val noteDao = database.noteDao()
+    private val habitDao = database.habitDao()
+    private val customCategoryDao = database.customCategoryDao()
+    private val userProfileManager = UserProfileManager(application)
+    private val reminderPrefs = ReminderPreferences(application)
 
-data class MonoDoUiState(
-    val activeTasks: List<TaskEntity> = emptyList(),
-    val completedTasks: List<TaskEntity> = emptyList(),
-    val categories: List<String> = listOf("All", "Work", "Personal", "Health", "Focus", "Ideas"),
-    val categoryCounts: Map<String, Int> = emptyMap(),
-    val allTags: List<String> = emptyList(),
-    val selectedCategory: String = "All",
-    val searchQuery: String = "",
-    val selectedPriority: TaskPriority? = null,
-    val streakDays: Int = 0,
-    val completedTodayCount: Int = 0,
-    val totalActiveCount: Int = 0,
-    val weeklyActivity: List<DayActivity> = emptyList(),
-    val showCompletedSection: Boolean = true
-)
+    // Raw streams from DB
+    val allTasks: StateFlow<List<TaskEntity>> = taskDao.getAllTasks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-/**
- * TaskViewModel manages task state, notes, and exposes reactive StateFlow data for the UI layer.
- * Backed by Room's TaskDao and NoteDao to support full CRUD operations.
- */
-class TaskViewModel(
-    application: Application,
-    private val taskDao: TaskDao,
-    private val noteDao: NoteDao
-) : AndroidViewModel(application) {
+    val allNotes: StateFlow<List<NoteEntity>> = noteDao.getAllNotes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    constructor(application: Application) : this(
-        application,
-        AppDatabase.getDatabase(application).taskDao(),
-        AppDatabase.getDatabase(application).noteDao()
-    )
+    val allHabits: StateFlow<List<HabitEntity>> = habitDao.getAllHabits()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    constructor(application: Application, taskDao: TaskDao) : this(
-        application,
-        taskDao,
-        AppDatabase.getDatabase(application).noteDao()
-    )
+    // 7-day habit logs range
+    private val startDay = (System.currentTimeMillis() - 7L * 86400000L) / 86400000L
+    private val endDay = (System.currentTimeMillis() + 86400000L) / 86400000L
+    val habitLogs: StateFlow<List<HabitLogEntity>> = habitDao.getLogsForDateRange(startDay, endDay)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val repository: TaskRepository = TaskRepository(taskDao)
+    val customCategoriesFromDb: StateFlow<List<CustomCategoryEntity>> = customCategoryDao.getAllCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    /**
-     * Production clean state: We do not inject mock/dummy tasks.
-     */
-    fun seedInitialTasksIfEmpty() {
-        // No-op for production: users start with their own real tasks
-    }
-
-    /**
-     * Production cleanup: Purges any demo/dummy tasks and notes from early testing,
-     * leaving user-created data intact and guaranteeing a clean slate.
-     */
-    fun removeSampleDataIfPresent() {
-        viewModelScope.launch {
-            val sampleTaskTitles = setOf(
-                "Prepare Q4 Product Strategy & KPI Deck",
-                "Morning 5km Run & Mobility Flow",
-                "Weekly Grocery Restock & Meal Prep",
-                "Deep Focus: Category Tagging & Filter Bar",
-                "Explore Minimalist Haptic Gestures"
-            )
-            val currentTasks = repository.allTasks.first()
-            for (task in currentTasks) {
-                if (task.title in sampleTaskTitles) {
-                    repository.deleteTask(task)
-                }
-            }
-
-            val sampleNoteTitles = setOf(
-                "Q4 Key Strategic Objectives",
-                "Daily Recovery & Mobility Protocol",
-                "Favorite Coffee Roasters & Grind Sizes"
-            )
-            val currentNotes = noteDao.getAllNotes().first()
-            for (note in currentNotes) {
-                if (note.title in sampleNoteTitles) {
-                    noteDao.deleteNote(note)
-                }
-            }
-        }
-    }
-
-    // Observable raw StateFlow stream of all tasks directly from Room DAO
-    val allTasks: StateFlow<List<TaskEntity>> = repository.allTasks.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
-
-    // Observable raw StateFlow stream of all Google Keep-style notes from Room DAO
-    val allNotes: StateFlow<List<NoteEntity>> = noteDao.getAllNotes().stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
-
-    // Filter and query state
-    private val _selectedCategory = MutableStateFlow("All")
-    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
-
+    // UI Filter and Sort states for tasks
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _selectedPriority = MutableStateFlow<TaskPriority?>(null)
-    val selectedPriority: StateFlow<TaskPriority?> = _selectedPriority.asStateFlow()
+    private val _selectedCategory = MutableStateFlow("All")
+    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
-    private val _showCompletedSection = MutableStateFlow(true)
-    val showCompletedSection: StateFlow<Boolean> = _showCompletedSection.asStateFlow()
+    private val _priorityFilter = MutableStateFlow<TaskPriority?>(null)
+    val priorityFilter: StateFlow<TaskPriority?> = _priorityFilter.asStateFlow()
 
-    // Consolidated reactive StateFlow for the UI screen
-    val uiState: StateFlow<MonoDoUiState> = combine(
-        allTasks,
-        _selectedCategory,
-        _searchQuery,
-        _selectedPriority,
-        _showCompletedSection
-    ) { tasksList, category, query, priority, showCompleted ->
-        val trimmed = query.trim()
-        val tagQuery = trimmed.removePrefix("#").trim()
+    private val _sortOrder = MutableStateFlow(TaskSortOrder.DEFAULT)
+    val sortOrder: StateFlow<TaskSortOrder> = _sortOrder.asStateFlow()
 
-        val baseCategories = listOf("All", "Work", "Personal", "Health", "Focus", "Ideas")
-        val customCategories = tasksList.map { it.category }.filter { it.isNotBlank() && !baseCategories.contains(it) }.distinct()
-        val allTagsList = tasksList.flatMap { it.tags }.map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted()
-        val tagFilters = allTagsList.map { if (it.startsWith("#")) it else "#$it" }
-        val allDisplayCategories = (baseCategories + customCategories + tagFilters).distinct()
+    // Zen Focus Mode state (null if inactive)
+    private val _zenActiveTask = MutableStateFlow<TaskEntity?>(null)
+    val zenActiveTask: StateFlow<TaskEntity?> = _zenActiveTask.asStateFlow()
 
-        // Calculate count of active tasks per category for the filter bar
-        val activeTasksAll = tasksList.filter { !it.isCompleted }
-        val countsMap = mutableMapOf<String, Int>()
-        countsMap["All"] = activeTasksAll.size
-        for (cat in allDisplayCategories) {
-            if (cat != "All") {
-                countsMap[cat] = activeTasksAll.count { task ->
-                    if (cat.startsWith("#")) {
-                        val raw = cat.removePrefix("#")
-                        task.tags.any { it.equals(raw, ignoreCase = true) || it.equals(cat, ignoreCase = true) }
-                    } else {
-                        task.category.equals(cat, ignoreCase = true) ||
-                                task.tags.any { it.equals(cat, ignoreCase = true) || it.equals("#$cat", ignoreCase = true) }
-                    }
+    // Notes filter state
+    private val _noteSearchQuery = MutableStateFlow("")
+    val noteSearchQuery: StateFlow<String> = _noteSearchQuery.asStateFlow()
+
+    // User profile state
+    private val _userProfile = MutableStateFlow(userProfileManager.getProfile())
+    val userProfile: StateFlow<UserProfile> = _userProfile.asStateFlow()
+
+    init {
+        // Register custom categories with CategoryTheme
+        viewModelScope.launch {
+            customCategoriesFromDb.collect { list ->
+                list.forEach { cat ->
+                    CategoryTheme.registerCustomStyle(cat.name, cat.colorHex)
                 }
             }
         }
+    }
 
-        val filtered = tasksList.filter { task ->
-            val matchesCategory = when {
-                category == "All" -> true
-                category.startsWith("#") -> {
-                    val raw = category.removePrefix("#")
-                    task.tags.any { it.equals(raw, ignoreCase = true) || it.equals(category, ignoreCase = true) }
-                }
-                else -> {
-                    task.category.equals(category, ignoreCase = true) ||
-                            task.tags.any { it.equals(category, ignoreCase = true) || it.equals("#$category", ignoreCase = true) }
-                }
-            }
-            val matchesQuery = if (trimmed.isBlank()) true else {
-                task.title.contains(trimmed, ignoreCase = true) ||
-                        task.category.contains(tagQuery, ignoreCase = true) ||
-                        task.category.contains(trimmed, ignoreCase = true) ||
-                        task.tags.any { it.contains(tagQuery, ignoreCase = true) || it.contains(trimmed, ignoreCase = true) } ||
-                        task.description.contains(trimmed, ignoreCase = true) ||
-                        task.priority.label.contains(trimmed, ignoreCase = true) ||
-                        task.subtasks.any { it.title.contains(trimmed, ignoreCase = true) }
-            }
-            val matchesPriority = if (priority == null) true else task.priority == priority
+    // Filtered & Sorted tasks state
+    val filteredTasks: StateFlow<List<TaskEntity>> = combine(
+        allTasks,
+        _searchQuery,
+        _selectedCategory,
+        _priorityFilter,
+        _sortOrder
+    ) { tasks, query, category, priority, order ->
+        val filtered = tasks.filter { task ->
+            val matchesCategory = category.equals("All", ignoreCase = true) ||
+                    task.category.equals(category, ignoreCase = true)
+            val matchesQuery = query.isBlank() ||
+                    task.title.contains(query, ignoreCase = true) ||
+                    task.description.contains(query, ignoreCase = true)
+            val matchesPriority = priority == null || task.priority == priority
             matchesCategory && matchesQuery && matchesPriority
         }
 
-        val active = filtered.filter { !it.isCompleted }
-            .sortedWith(
+        when (order) {
+            TaskSortOrder.DEFAULT -> filtered.sortedByDescending { it.createdAt }
+            TaskSortOrder.PRIORITY -> filtered.sortedWith(
                 compareByDescending<TaskEntity> { it.priority.ordinal }
-                    .thenBy { it.dueDate ?: Long.MAX_VALUE }
                     .thenByDescending { it.createdAt }
             )
-
-        val completed = filtered.filter { it.isCompleted }
-            .sortedByDescending { it.completedAt ?: it.createdAt }
-
-        // Dynamic streak & stats calculation
-        val todayStart = getStartOfDay(System.currentTimeMillis())
-        val completedToday = tasksList.count {
-            it.isCompleted && (it.completedAt ?: it.createdAt) >= todayStart
+            TaskSortOrder.DUE_DATE -> filtered.sortedWith(
+                compareBy<TaskEntity> { it.dueDate ?: Long.MAX_VALUE }
+                    .thenByDescending { it.createdAt }
+            )
+            TaskSortOrder.CREATION_DATE -> filtered.sortedByDescending { it.createdAt }
+            TaskSortOrder.ALPHABETICAL -> filtered.sortedBy { it.title.lowercase(Locale.getDefault()) }
         }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-        val weekly = computeWeeklyActivity(tasksList)
-        val streak = computeStreak(tasksList)
+    val categoryList: StateFlow<List<String>> = combine(
+        allTasks,
+        customCategoriesFromDb
+    ) { tasks, customEntities ->
+        val defaults = listOf("All", "Work", "Personal", "Health", "Focus", "Finance")
+        val fromCustom = customEntities.map { it.name }
+        val fromTasks = tasks.map { it.category }.filter { it.isNotBlank() }
+        (defaults + fromCustom + fromTasks).distinct()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("All", "Work", "Personal", "Health", "Focus", "Finance"))
 
-        MonoDoUiState(
-            activeTasks = active,
-            completedTasks = completed,
-            categories = allDisplayCategories,
-            categoryCounts = countsMap,
-            allTags = allTagsList,
-            selectedCategory = category,
-            searchQuery = query,
-            selectedPriority = priority,
-            streakDays = streak,
-            completedTodayCount = completedToday,
-            totalActiveCount = tasksList.count { !it.isCompleted },
-            weeklyActivity = weekly,
-            showCompletedSection = showCompleted
-        )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = MonoDoUiState()
-    )
+    val categoryCounts: StateFlow<Map<String, Int>> = allTasks.combine(_selectedCategory) { tasks, _ ->
+        val map = mutableMapOf<String, Int>()
+        val activeTasks = tasks.filter { !it.isCompleted }
+        map["All"] = activeTasks.size
+        activeTasks.forEach { task ->
+            map[task.category] = (map[task.category] ?: 0) + 1
+        }
+        map
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    // ==========================================
-    // CRUD Operations (Room DAO interactions)
-    // ==========================================
+    // Filtered notes
+    val filteredNotes: StateFlow<List<NoteEntity>> = combine(
+        allNotes,
+        _noteSearchQuery
+    ) { notes, query ->
+        if (query.isBlank()) {
+            notes
+        } else {
+            notes.filter {
+                it.title.contains(query, ignoreCase = true) ||
+                        it.content.contains(query, ignoreCase = true)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    /**
-     * Create: Insert a task entity directly into Room database.
-     */
-    fun insertTask(task: TaskEntity) {
-        viewModelScope.launch {
-            repository.insertTask(task)
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun setSelectedCategory(category: String) {
+        _selectedCategory.value = category
+    }
+
+    fun setPriorityFilter(priority: TaskPriority?) {
+        _priorityFilter.value = priority
+    }
+
+    fun setSortOrder(order: TaskSortOrder) {
+        _sortOrder.value = order
+    }
+
+    // Custom Category with color palette
+    fun addCustomCategory(name: String, colorHex: String = "#2563EB") {
+        val trimmed = name.trim()
+        if (trimmed.isNotBlank()) {
+            CategoryTheme.registerCustomStyle(trimmed, colorHex)
+            viewModelScope.launch {
+                customCategoryDao.insertCategory(
+                    CustomCategoryEntity(name = trimmed, colorHex = colorHex)
+                )
+            }
         }
     }
 
-    /**
-     * Create: Insert a batch of task entities into Room database.
-     */
-    fun insertTasks(tasks: List<TaskEntity>) {
-        viewModelScope.launch {
-            repository.insertTasks(tasks)
-        }
+    // Zen Focus Mode Controls
+    fun enterZenFocus(task: TaskEntity) {
+        _zenActiveTask.value = task
     }
 
-    /**
-     * Create: Convenience builder to create and insert a new task with optional subtasks and tags.
-     */
+    fun exitZenFocus() {
+        _zenActiveTask.value = null
+    }
+
+    fun setNoteSearchQuery(query: String) {
+        _noteSearchQuery.value = query
+    }
+
+    // Task CRUD operations
     fun createTask(
         title: String,
         description: String = "",
         category: String = "General",
-        tags: List<String> = emptyList(),
         priority: TaskPriority = TaskPriority.MEDIUM,
         dueDate: Long? = null,
         subtaskTitles: List<String> = emptyList()
     ) {
-        if (title.isBlank()) return
         viewModelScope.launch {
-            val subtaskList = subtaskTitles
-                .filter { it.isNotBlank() }
-                .map { SubTask(id = UUID.randomUUID().toString(), title = it.trim(), isCompleted = false) }
-
-            val cleanTags = tags.map { it.trim().removePrefix("#") }.filter { it.isNotBlank() }.distinct()
-
+            val subtasks = subtaskTitles.map { subTitle ->
+                SubTask(
+                    id = UUID.randomUUID().toString(),
+                    title = subTitle.trim(),
+                    isCompleted = false
+                )
+            }
             val task = TaskEntity(
                 title = title.trim(),
                 description = description.trim(),
-                category = if (category.isBlank()) "General" else category,
-                tags = cleanTags,
+                category = category.trim().ifBlank { "General" },
                 priority = priority,
                 dueDate = dueDate,
                 isCompleted = false,
-                subtasks = subtaskList
+                subtasks = subtasks,
+                createdAt = System.currentTimeMillis()
             )
-            repository.insertTask(task)
+            taskDao.insertTask(task)
+            MonoDoWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
-    fun createTask(
-        title: String,
-        description: String = "",
-        category: String = "General",
-        priority: TaskPriority = TaskPriority.MEDIUM,
-        dueDate: Long? = null,
-        subtaskTitles: List<String> = emptyList()
-    ) = createTask(title, description, category, emptyList(), priority, dueDate, subtaskTitles)
-
-    /**
-     * Read: Retrieve a single task by its ID asynchronously.
-     */
-    fun getTaskById(id: Long, onResult: (TaskEntity?) -> Unit) {
-        viewModelScope.launch {
-            val task = repository.getTaskById(id)
-            onResult(task)
-        }
-    }
-
-    /**
-     * Read: Observe a specific task by ID as a reactive Flow.
-     */
-    fun getTaskByIdFlow(id: Long): Flow<TaskEntity?> {
-        return repository.getTaskByIdFlow(id)
-    }
-
-    /**
-     * Update: Update an existing task in Room database.
-     */
-    fun updateTask(task: TaskEntity) {
-        viewModelScope.launch {
-            repository.updateTask(task)
-        }
-    }
-
-    /**
-     * Update: Toggle the completion status of a task with timestamp.
-     */
     fun toggleTaskCompletion(task: TaskEntity) {
         viewModelScope.launch {
-            val updated = task.copy(
-                isCompleted = !task.isCompleted,
-                completedAt = if (!task.isCompleted) System.currentTimeMillis() else null
-            )
-            repository.updateTask(updated)
-        }
-    }
-
-    /**
-     * Update: Add a subtask to an existing task.
-     */
-    fun addSubtaskToTask(task: TaskEntity, subtaskTitle: String) {
-        if (subtaskTitle.isBlank()) return
-        viewModelScope.launch {
-            val newSubtask = SubTask(
-                id = UUID.randomUUID().toString(),
-                title = subtaskTitle.trim(),
-                isCompleted = false
-            )
-            val updatedList = task.subtasks + newSubtask
-            repository.updateTask(task.copy(subtasks = updatedList))
-        }
-    }
-
-    /**
-     * Update: Toggle a subtask's completion status.
-     */
-    fun toggleSubtask(task: TaskEntity, subtaskId: String) {
-        viewModelScope.launch {
-            val updatedSubtasks = task.subtasks.map {
-                if (it.id == subtaskId) it.copy(isCompleted = !it.isCompleted) else it
+            val willBeCompleted = !task.isCompleted
+            val updatedSubtasks = if (willBeCompleted) {
+                task.subtasks.map { it.copy(isCompleted = true) }
+            } else {
+                task.subtasks
             }
-            repository.updateTask(task.copy(subtasks = updatedSubtasks))
+            val updated = task.copy(
+                isCompleted = willBeCompleted,
+                completedAt = if (willBeCompleted) System.currentTimeMillis() else null,
+                subtasks = updatedSubtasks
+            )
+            taskDao.updateTask(updated)
+            if (_zenActiveTask.value?.id == task.id) {
+                _zenActiveTask.value = updated
+            }
+            MonoDoWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
-    /**
-     * Update: Delete a subtask from an existing task.
-     */
-    fun deleteSubtask(task: TaskEntity, subtaskId: String) {
-        viewModelScope.launch {
-            val updatedList = task.subtasks.filter { it.id != subtaskId }
-            repository.updateTask(task.copy(subtasks = updatedList))
-        }
-    }
-
-    /**
-     * Delete: Remove a task entity from Room database.
-     */
     fun deleteTask(task: TaskEntity) {
         viewModelScope.launch {
-            repository.deleteTask(task)
+            taskDao.deleteTask(task)
+            if (_zenActiveTask.value?.id == task.id) {
+                _zenActiveTask.value = null
+            }
+            MonoDoWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
-    /**
-     * Delete: Remove a task by its ID.
-     */
-    fun deleteTaskById(id: Long) {
+    fun rescheduleTask(task: TaskEntity, newDueDate: Long?) {
         viewModelScope.launch {
-            repository.deleteById(id)
+            val updated = task.copy(dueDate = newDueDate)
+            taskDao.updateTask(updated)
+            if (_zenActiveTask.value?.id == task.id) {
+                _zenActiveTask.value = updated
+            }
+            MonoDoWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
-    /**
-     * Delete: Clear all tasks from the database.
-     */
-    fun clearAllTasks() {
+    fun deleteCustomCategory(name: String) {
         viewModelScope.launch {
-            repository.deleteAllTasks()
+            customCategoryDao.deleteCategoryByName(name)
+            if (_selectedCategory.value.equals(name, ignoreCase = true)) {
+                _selectedCategory.value = "All"
+            }
         }
     }
 
-    // ==========================================
-    // Notes CRUD Operations (Room DAO)
-    // ==========================================
-
-    fun createNote(
-        title: String,
-        content: String,
-        category: String = "General",
-        isPinned: Boolean = false
-    ) {
-        if (title.isBlank() && content.isBlank()) return
+    fun toggleSubtask(taskId: Long, subtaskId: String) {
         viewModelScope.launch {
-            val now = System.currentTimeMillis()
+            val task = taskDao.getTaskById(taskId) ?: return@launch
+            val updatedSubtasks = task.subtasks.map { sub ->
+                if (sub.id == subtaskId) sub.copy(isCompleted = !sub.isCompleted) else sub
+            }
+            val allCompleted = updatedSubtasks.isNotEmpty() && updatedSubtasks.all { it.isCompleted }
+            val updated = task.copy(
+                subtasks = updatedSubtasks,
+                isCompleted = if (allCompleted) true else task.isCompleted,
+                completedAt = if (allCompleted && !task.isCompleted) System.currentTimeMillis() else task.completedAt
+            )
+            taskDao.updateTask(updated)
+            if (_zenActiveTask.value?.id == taskId) {
+                _zenActiveTask.value = updated
+            }
+            MonoDoWidgetProvider.updateAllWidgets(getApplication())
+        }
+    }
+
+    fun addSubtask(taskId: Long, title: String) {
+        viewModelScope.launch {
+            val task = taskDao.getTaskById(taskId) ?: return@launch
+            val newSub = SubTask(
+                id = UUID.randomUUID().toString(),
+                title = title.trim(),
+                isCompleted = false
+            )
+            val updatedSubtasks = task.subtasks + newSub
+            val updated = task.copy(
+                subtasks = updatedSubtasks,
+                isCompleted = false,
+                completedAt = null
+            )
+            taskDao.updateTask(updated)
+            if (_zenActiveTask.value?.id == taskId) {
+                _zenActiveTask.value = updated
+            }
+        }
+    }
+
+    fun deleteSubtask(taskId: Long, subtaskId: String) {
+        viewModelScope.launch {
+            val task = taskDao.getTaskById(taskId) ?: return@launch
+            val updatedSubtasks = task.subtasks.filter { it.id != subtaskId }
+            val updated = task.copy(subtasks = updatedSubtasks)
+            taskDao.updateTask(updated)
+            if (_zenActiveTask.value?.id == taskId) {
+                _zenActiveTask.value = updated
+            }
+        }
+    }
+
+    fun clearCompletedTasks() {
+        viewModelScope.launch {
+            val completed = allTasks.value.filter { it.isCompleted }
+            completed.forEach { taskDao.deleteTask(it) }
+            MonoDoWidgetProvider.updateAllWidgets(getApplication())
+        }
+    }
+
+    // Habits Operations
+    fun addHabit(title: String, colorHex: String) {
+        val clean = title.trim()
+        if (clean.isNotBlank()) {
+            viewModelScope.launch {
+                habitDao.insertHabit(
+                    HabitEntity(title = clean, colorHex = colorHex)
+                )
+            }
+        }
+    }
+
+    fun deleteHabit(habitId: Long) {
+        viewModelScope.launch {
+            habitDao.deleteHabitById(habitId)
+            habitDao.deleteLogsForHabit(habitId)
+        }
+    }
+
+    fun toggleHabitDay(habitId: Long, epochDay: Long) {
+        viewModelScope.launch {
+            val existing = habitDao.getLog(habitId, epochDay)
+            if (existing != null) {
+                habitDao.deleteLog(habitId, epochDay)
+            } else {
+                habitDao.insertOrUpdateLog(
+                    HabitLogEntity(habitId = habitId, dateEpochDay = epochDay, isCompleted = true)
+                )
+            }
+        }
+    }
+
+    // Notes CRUD operations
+    fun createNote(title: String, content: String, category: String = "General") {
+        viewModelScope.launch {
             val note = NoteEntity(
                 title = title.trim(),
                 content = content.trim(),
-                category = category.ifBlank { "General" },
-                isPinned = isPinned,
-                createdAt = now,
-                updatedAt = now
+                category = category.trim().ifBlank { "General" },
+                isPinned = false,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
             )
             noteDao.insertNote(note)
         }
@@ -443,8 +400,13 @@ class TaskViewModel(
 
     fun updateNote(note: NoteEntity) {
         viewModelScope.launch {
-            val updated = note.copy(updatedAt = System.currentTimeMillis())
-            noteDao.updateNote(updated)
+            noteDao.updateNote(note.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun togglePinNote(note: NoteEntity) {
+        viewModelScope.launch {
+            noteDao.updateNote(note.copy(isPinned = !note.isPinned, updatedAt = System.currentTimeMillis()))
         }
     }
 
@@ -454,375 +416,337 @@ class TaskViewModel(
         }
     }
 
-    fun clearAllNotes() {
-        viewModelScope.launch {
-            noteDao.deleteAllNotes()
-        }
+    // Profile & Reset
+    fun refreshProfile() {
+        _userProfile.value = userProfileManager.getProfile()
+    }
+
+    fun saveUserProfile(
+        name: String,
+        workspaceTitle: String = "MonoDo",
+        birthDate: String = "",
+        birthTimestamp: Long = 0L,
+        reminderHour: Int = 9,
+        reminderMinute: Int = 0
+    ) {
+        userProfileManager.saveProfile(
+            userName = name,
+            workspaceTitle = workspaceTitle,
+            birthDate = birthDate,
+            birthTimestamp = birthTimestamp,
+            reminderHour = reminderHour,
+            reminderMinute = reminderMinute
+        )
+        refreshProfile()
     }
 
     fun resetAllData() {
         viewModelScope.launch {
-            repository.deleteAllTasks()
+            taskDao.deleteAllTasks()
             noteDao.deleteAllNotes()
+            habitDao.deleteAllHabits()
+            habitDao.deleteAllHabitLogs()
+            customCategoryDao.deleteAllCategories()
+            userProfileManager.resetProfile()
+            ReminderScheduler.cancelDailyReminder(getApplication())
+            refreshProfile()
+            MonoDoWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
-    fun togglePinNote(note: NoteEntity) {
-        viewModelScope.launch {
-            val updated = note.copy(
-                isPinned = !note.isPinned,
-                updatedAt = System.currentTimeMillis()
-            )
-            noteDao.updateNote(updated)
-        }
-    }
-
-    /**
-     * Production clean state: We do not inject mock/dummy notes.
-     */
-    fun seedInitialNotesIfEmpty() {
-        // No-op for production: users start with their own real notes
-    }
-
-    // ==========================================
-    // Filter and UI State Controls
-    // ==========================================
-
-    fun selectCategory(category: String) {
-        _selectedCategory.value = category
-    }
-
-    fun setSearchQuery(query: String) {
-        _searchQuery.value = query
-    }
-
-    /**
-     * Search and filter tasks locally by title, tag, or keyword.
-     */
-    fun searchTasks(query: String) {
-        setSearchQuery(query)
-    }
-
-    fun setPriorityFilter(priority: TaskPriority?) {
-        _selectedPriority.value = priority
-    }
-
-    fun toggleShowCompleted() {
-        _showCompletedSection.value = !_showCompletedSection.value
-    }
-
-    // ==========================================
-    // Internal Analytic Helpers
-    // ==========================================
-
-    private fun getStartOfDay(timeMillis: Long): Long {
-        val calendar = Calendar.getInstance().apply {
-            timeInMillis = timeMillis
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        return calendar.timeInMillis
-    }
-
-    private fun computeWeeklyActivity(allTasks: List<TaskEntity>): List<DayActivity> {
-        val days = mutableListOf<DayActivity>()
-        val calendar = Calendar.getInstance()
-        val dayFormat = SimpleDateFormat("EEE", Locale.getDefault())
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-
-        val now = System.currentTimeMillis()
-        val todayStr = dateFormat.format(Date(now))
-        val fullDayFormat = SimpleDateFormat("EEEE", Locale.getDefault())
-
-        for (i in 6 downTo 0) {
-            val cal = Calendar.getInstance().apply {
-                timeInMillis = now
-                add(Calendar.DAY_OF_YEAR, -i)
-            }
-            val start = getStartOfDay(cal.timeInMillis)
-            val end = start + 86_400_000L
-            val dateStr = dateFormat.format(cal.time)
-            val dayLabel = dayFormat.format(cal.time).uppercase().take(2)
-            val dayFullName = fullDayFormat.format(cal.time)
-
-            val count = allTasks.count {
-                val completionTime = it.completedAt ?: (if (it.isCompleted) it.createdAt else 0L)
-                it.isCompleted && completionTime in start until end
-            }
-
-            days.add(
-                DayActivity(
-                    dayLabel = dayLabel,
-                    dayOfMonth = cal.get(Calendar.DAY_OF_MONTH),
-                    dateString = dateStr,
-                    completedCount = count,
-                    isToday = dateStr == todayStr,
-                    dayFullName = dayFullName
-                )
-            )
-        }
-        return days
-    }
-
-    private fun computeStreak(allTasks: List<TaskEntity>): Int {
-        val completedTimestamps = allTasks.filter { it.isCompleted }
-            .map { it.completedAt ?: it.createdAt }
-
-        if (completedTimestamps.isEmpty()) return 0
-
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val completedDates = completedTimestamps.map { dateFormat.format(Date(it)) }.toSet()
-
-        val calendar = Calendar.getInstance()
-        val todayStr = dateFormat.format(calendar.time)
-
-        var streak = 0
-        if (completedDates.contains(todayStr)) {
-            streak++
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
-        } else {
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
-            val yesterdayStr = dateFormat.format(calendar.time)
-            if (!completedDates.contains(yesterdayStr)) {
-                return 0
-            }
-            streak++
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
-        }
-
-        while (true) {
-            val dateStr = dateFormat.format(calendar.time)
-            if (completedDates.contains(dateStr)) {
-                streak++
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
-            } else {
-                break
-            }
-        }
-        return streak
-    }
-
-    /**
-     * Export all active and completed tasks to a clean JSON string for backup.
-     */
-    fun exportTasksAsJson(): String {
+    // 1-Tap Offline Backup & Restore (JSON)
+    fun exportJsonBackup(): String {
         val root = JSONObject()
         root.put("app", "MonoDo")
-        root.put("version", "1.0")
-        root.put("exportedAt", System.currentTimeMillis())
+        root.put("version", 3)
+        root.put("timestamp", System.currentTimeMillis())
+        root.put("exportedAt", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
 
+        // Tasks
         val tasksArray = JSONArray()
-        for (task in allTasks.value) {
-            val taskObj = JSONObject()
-            taskObj.put("id", task.id)
-            taskObj.put("title", task.title)
-            taskObj.put("description", task.description)
-            taskObj.put("category", task.category)
-            taskObj.put("isCompleted", task.isCompleted)
-            taskObj.put("priority", task.priority.name)
-            taskObj.put("dueDate", task.dueDate ?: JSONObject.NULL)
-            taskObj.put("createdAt", task.createdAt)
-            taskObj.put("completedAt", task.completedAt ?: JSONObject.NULL)
+        allTasks.value.forEach { t ->
+            val tObj = JSONObject().apply {
+                put("id", t.id)
+                put("title", t.title)
+                put("description", t.description)
+                put("category", t.category)
+                put("priority", t.priority.name)
+                if (t.dueDate != null) put("dueDate", t.dueDate)
+                put("isCompleted", t.isCompleted)
+                put("createdAt", t.createdAt)
+                if (t.completedAt != null) put("completedAt", t.completedAt)
 
-            val tagsArray = JSONArray()
-            task.tags.forEach { tagsArray.put(it) }
-            taskObj.put("tags", tagsArray)
-
-            val subtasksArray = JSONArray()
-            task.subtasks.forEach { sub ->
-                val subObj = JSONObject()
-                subObj.put("id", sub.id)
-                subObj.put("title", sub.title)
-                subObj.put("isCompleted", sub.isCompleted)
-                subtasksArray.put(subObj)
+                val subArray = JSONArray()
+                t.subtasks.forEach { s ->
+                    val sObj = JSONObject().apply {
+                        put("id", s.id)
+                        put("title", s.title)
+                        put("isCompleted", s.isCompleted)
+                    }
+                    subArray.put(sObj)
+                }
+                put("subtasks", subArray)
             }
-            taskObj.put("subtasks", subtasksArray)
-
-            tasksArray.put(taskObj)
+            tasksArray.put(tObj)
         }
         root.put("tasks", tasksArray)
+
+        // Notes
+        val notesArray = JSONArray()
+        allNotes.value.forEach { n ->
+            val nObj = JSONObject().apply {
+                put("id", n.id)
+                put("title", n.title)
+                put("content", n.content)
+                put("category", n.category)
+                put("isPinned", n.isPinned)
+                put("createdAt", n.createdAt)
+                put("updatedAt", n.updatedAt)
+            }
+            notesArray.put(nObj)
+        }
+        root.put("notes", notesArray)
+
+        // Habits
+        val habitsArray = JSONArray()
+        allHabits.value.forEach { h ->
+            val hObj = JSONObject().apply {
+                put("id", h.id)
+                put("title", h.title)
+                put("frequency", h.frequency)
+                put("colorHex", h.colorHex)
+                put("createdAt", h.createdAt)
+            }
+            habitsArray.put(hObj)
+        }
+        root.put("habits", habitsArray)
+
+        // Habit Logs
+        val habitLogsArray = JSONArray()
+        habitLogs.value.forEach { l ->
+            val lObj = JSONObject().apply {
+                put("habitId", l.habitId)
+                put("dateEpochDay", l.dateEpochDay)
+                put("isCompleted", l.isCompleted)
+                put("completedAt", l.completedAt)
+            }
+            habitLogsArray.put(lObj)
+        }
+        root.put("habitLogs", habitLogsArray)
+
+        // Custom Categories
+        val categoriesArray = JSONArray()
+        customCategoriesFromDb.value.forEach { c ->
+            val cObj = JSONObject().apply {
+                put("id", c.id)
+                put("name", c.name)
+                put("colorHex", c.colorHex)
+                put("createdAt", c.createdAt)
+            }
+            categoriesArray.put(cObj)
+        }
+        root.put("customCategories", categoriesArray)
+
         return root.toString(2)
     }
 
-    /**
-     * Import tasks from a backup JSON string into the local Room database.
-     * Returns the count of successfully restored tasks.
-     */
-    suspend fun importTasksFromJson(jsonString: String): Int {
-        try {
+    fun saveBackupToInternalStorage(): String {
+        val json = exportJsonBackup()
+        val file = java.io.File(getApplication<Application>().filesDir, "monodo_backup_latest.json")
+        file.writeText(json)
+        return file.absolutePath
+    }
+
+    fun hasInternalBackupFile(): Boolean {
+        val file = java.io.File(getApplication<Application>().filesDir, "monodo_backup_latest.json")
+        return file.exists() && file.length() > 0
+    }
+
+    fun restoreFromInternalStorage(): Boolean {
+        val file = java.io.File(getApplication<Application>().filesDir, "monodo_backup_latest.json")
+        if (!file.exists()) return false
+        return importJsonBackup(file.readText())
+    }
+
+    fun importJsonBackup(jsonString: String): Boolean {
+        return try {
             val root = JSONObject(jsonString)
-            val tasksArray = root.getJSONArray("tasks")
-            val newTasks = mutableListOf<TaskEntity>()
 
-            for (i in 0 until tasksArray.length()) {
-                val obj = tasksArray.getJSONObject(i)
-                val title = obj.optString("title", "").trim()
-                if (title.isBlank()) continue
-
-                val description = obj.optString("description", "")
-                val category = obj.optString("category", "Focus")
-                val isCompleted = obj.optBoolean("isCompleted", false)
-                val priorityStr = obj.optString("priority", TaskPriority.MEDIUM.name)
-                val priority = try { TaskPriority.valueOf(priorityStr) } catch (_: Exception) { TaskPriority.MEDIUM }
-                val dueDate = if (obj.isNull("dueDate")) null else obj.optLong("dueDate")
-                val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-                val completedAt = if (obj.isNull("completedAt")) null else obj.optLong("completedAt")
-
-                val tags = mutableListOf<String>()
-                val tagsArr = obj.optJSONArray("tags")
-                if (tagsArr != null) {
-                    for (t in 0 until tagsArr.length()) {
-                        tags.add(tagsArr.getString(t))
+            viewModelScope.launch {
+                // Restore Custom Categories
+                val categoriesArray = root.optJSONArray("customCategories")
+                if (categoriesArray != null) {
+                    for (i in 0 until categoriesArray.length()) {
+                        val cObj = categoriesArray.getJSONObject(i)
+                        val name = cObj.optString("name", "")
+                        val colorHex = cObj.optString("colorHex", "#2563EB")
+                        if (name.isNotBlank()) {
+                            CategoryTheme.registerCustomStyle(name, colorHex)
+                            customCategoryDao.insertCategory(
+                                CustomCategoryEntity(
+                                    id = cObj.optLong("id", 0L),
+                                    name = name,
+                                    colorHex = colorHex,
+                                    createdAt = cObj.optLong("createdAt", System.currentTimeMillis())
+                                )
+                            )
+                        }
                     }
                 }
 
-                val subtasks = mutableListOf<SubTask>()
-                val subArr = obj.optJSONArray("subtasks")
-                if (subArr != null) {
-                    for (s in 0 until subArr.length()) {
-                        val sObj = subArr.getJSONObject(s)
-                        subtasks.add(
-                            SubTask(
-                                id = sObj.optString("id", UUID.randomUUID().toString()),
-                                title = sObj.optString("title", ""),
-                                isCompleted = sObj.optBoolean("isCompleted", false)
+                // Restore Tasks
+                val tasksArray = root.optJSONArray("tasks")
+                if (tasksArray != null) {
+                    for (i in 0 until tasksArray.length()) {
+                        val tObj = tasksArray.getJSONObject(i)
+                        val subtasksList = mutableListOf<SubTask>()
+                        val subArray = tObj.optJSONArray("subtasks")
+                        if (subArray != null) {
+                            for (j in 0 until subArray.length()) {
+                                val sObj = subArray.getJSONObject(j)
+                                subtasksList.add(
+                                    SubTask(
+                                        id = sObj.optString("id", UUID.randomUUID().toString()),
+                                        title = sObj.optString("title", ""),
+                                        isCompleted = sObj.optBoolean("isCompleted", false)
+                                    )
+                                )
+                            }
+                        }
+
+                        val priorityStr = tObj.optString("priority", "MEDIUM")
+                        val priority = try {
+                            TaskPriority.valueOf(priorityStr)
+                        } catch (e: Exception) {
+                            TaskPriority.MEDIUM
+                        }
+
+                        val task = TaskEntity(
+                            id = tObj.optLong("id", 0L),
+                            title = tObj.optString("title", "Imported Task"),
+                            description = tObj.optString("description", ""),
+                            category = tObj.optString("category", "General"),
+                            priority = priority,
+                            dueDate = if (tObj.has("dueDate") && !tObj.isNull("dueDate")) tObj.getLong("dueDate") else null,
+                            isCompleted = tObj.optBoolean("isCompleted", false),
+                            subtasks = subtasksList,
+                            createdAt = tObj.optLong("createdAt", System.currentTimeMillis()),
+                            completedAt = if (tObj.has("completedAt") && !tObj.isNull("completedAt")) tObj.getLong("completedAt") else null
+                        )
+                        taskDao.insertTask(task)
+                    }
+                }
+
+                // Restore Notes
+                val notesArray = root.optJSONArray("notes")
+                if (notesArray != null) {
+                    for (i in 0 until notesArray.length()) {
+                        val nObj = notesArray.getJSONObject(i)
+                        val note = NoteEntity(
+                            id = nObj.optLong("id", 0L),
+                            title = nObj.optString("title", "Imported Note"),
+                            content = nObj.optString("content", ""),
+                            category = nObj.optString("category", "General"),
+                            isPinned = nObj.optBoolean("isPinned", false),
+                            createdAt = nObj.optLong("createdAt", System.currentTimeMillis()),
+                            updatedAt = nObj.optLong("updatedAt", System.currentTimeMillis())
+                        )
+                        noteDao.insertNote(note)
+                    }
+                }
+
+                // Restore Habits
+                val habitsArray = root.optJSONArray("habits")
+                if (habitsArray != null) {
+                    for (i in 0 until habitsArray.length()) {
+                        val hObj = habitsArray.getJSONObject(i)
+                        val habit = HabitEntity(
+                            id = hObj.optLong("id", 0L),
+                            title = hObj.optString("title", "Imported Habit"),
+                            frequency = hObj.optString("frequency", "DAILY"),
+                            colorHex = hObj.optString("colorHex", "#2563EB"),
+                            createdAt = hObj.optLong("createdAt", System.currentTimeMillis())
+                        )
+                        habitDao.insertHabit(habit)
+                    }
+                }
+
+                // Restore Habit Logs
+                val habitLogsArray = root.optJSONArray("habitLogs")
+                if (habitLogsArray != null) {
+                    for (i in 0 until habitLogsArray.length()) {
+                        val lObj = habitLogsArray.getJSONObject(i)
+                        habitDao.insertOrUpdateLog(
+                            HabitLogEntity(
+                                habitId = lObj.optLong("habitId", 0L),
+                                dateEpochDay = lObj.optLong("dateEpochDay", 0L),
+                                isCompleted = lObj.optBoolean("isCompleted", true),
+                                completedAt = lObj.optLong("completedAt", System.currentTimeMillis())
                             )
                         )
                     }
                 }
 
-                newTasks.add(
-                    TaskEntity(
-                        id = 0, // auto-generate fresh IDs
-                        title = title,
-                        description = description,
-                        category = category,
-                        tags = tags,
-                        priority = priority,
-                        dueDate = dueDate,
-                        isCompleted = isCompleted,
-                        createdAt = createdAt,
-                        completedAt = completedAt,
-                        subtasks = subtasks
-                    )
-                )
+                MonoDoWidgetProvider.updateAllWidgets(getApplication())
             }
-
-            if (newTasks.isNotEmpty()) {
-                repository.insertTasks(newTasks)
-            }
-            return newTasks.size
-        } catch (_: Exception) {
-            return 0
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
-    /**
-     * Delete all completed tasks to declutter the workspace.
-     */
-    fun clearCompletedTasks() {
-        viewModelScope.launch {
-            val completed = allTasks.value.filter { it.isCompleted }
-            for (task in completed) {
-                repository.deleteTask(task)
+    // Analytics calculations for 7 days
+    fun getCompletionStatsForLast7Days(): List<Pair<String, Int>> {
+        val tasks = allTasks.value
+        val result = mutableListOf<Pair<String, Int>>()
+        val days = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+
+        for (i in 6 downTo 0) {
+            val dayCal = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, -i)
+            }
+            val dayStart = (dayCal.clone() as Calendar).apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val dayEnd = dayStart + 24 * 60 * 60 * 1000L
+
+            val completedOnDay = tasks.count {
+                it.isCompleted && it.completedAt != null && it.completedAt in dayStart until dayEnd
+            }
+            val dayLabel = days[dayCal.get(Calendar.DAY_OF_WEEK) - 1]
+            result.add(dayLabel to completedOnDay)
+        }
+        return result
+    }
+
+    fun calculateStreakDays(): Int {
+        val tasks = allTasks.value
+        val completedTasks = tasks.filter { it.isCompleted && it.completedAt != null }
+            .sortedByDescending { it.completedAt }
+        if (completedTasks.isEmpty()) return 0
+
+        var streak = 0
+        val cal = Calendar.getInstance()
+        for (i in 0..30) {
+            val dayStart = (cal.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, -i)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val dayEnd = dayStart + 24 * 60 * 60 * 1000L
+
+            val hasCompleted = completedTasks.any { it.completedAt!! in dayStart until dayEnd }
+            if (hasCompleted) {
+                streak++
+            } else if (i > 0) {
+                break
             }
         }
-    }
-
-    /**
-     * Seeds initial demonstration tasks spanning Work, Personal, Health, Focus, and Ideas categories.
-     */
-    private suspend fun seedInitialTasks() {
-        val now = System.currentTimeMillis()
-        val sampleTasks = listOf(
-            TaskEntity(
-                title = "Prepare Q4 Product Strategy & KPI Deck",
-                description = "Review quarterly metrics, map milestones, and align with design and engineering leads.",
-                category = "Work",
-                tags = listOf("roadmap", "q4"),
-                priority = TaskPriority.HIGH,
-                dueDate = now + 86_400_000L * 2,
-                isCompleted = false,
-                subtasks = listOf(
-                    SubTask(id = UUID.randomUUID().toString(), title = "Compile OKR completion rates", isCompleted = true),
-                    SubTask(id = UUID.randomUUID().toString(), title = "Draft core initiative slides", isCompleted = false),
-                    SubTask(id = UUID.randomUUID().toString(), title = "Collect tech lead feedback", isCompleted = false)
-                )
-            ),
-            TaskEntity(
-                title = "Morning 5km Run & Mobility Flow",
-                description = "Maintain aerobic base and complete 15 mins of full body hip and shoulder mobility.",
-                category = "Health",
-                tags = listOf("fitness", "wellness"),
-                priority = TaskPriority.HIGH,
-                dueDate = now,
-                isCompleted = false,
-                subtasks = listOf(
-                    SubTask(id = UUID.randomUUID().toString(), title = "Dynamic warmup stretches", isCompleted = true),
-                    SubTask(id = UUID.randomUUID().toString(), title = "5km continuous run", isCompleted = false),
-                    SubTask(id = UUID.randomUUID().toString(), title = "15-min mobility flow", isCompleted = false)
-                )
-            ),
-            TaskEntity(
-                title = "Weekly Grocery Restock & Meal Prep",
-                description = "Pick up fresh vegetables, sourdough, olive oil, and prepare lunch containers.",
-                category = "Personal",
-                tags = listOf("home", "nutrition"),
-                priority = TaskPriority.MEDIUM,
-                dueDate = now + 86_400_000L,
-                isCompleted = false,
-                subtasks = listOf(
-                    SubTask(id = UUID.randomUUID().toString(), title = "Organic greens & berries", isCompleted = false),
-                    SubTask(id = UUID.randomUUID().toString(), title = "Batch cook quinoa & roasted veg", isCompleted = false)
-                )
-            ),
-            TaskEntity(
-                title = "Deep Focus: Category Tagging & Filter Bar",
-                description = "Implement color-coded category labels, filter bar chips, and live counts.",
-                category = "Focus",
-                tags = listOf("android", "compose"),
-                priority = TaskPriority.URGENT,
-                dueDate = now,
-                isCompleted = true,
-                completedAt = now - 3600_000L,
-                subtasks = listOf(
-                    SubTask(id = UUID.randomUUID().toString(), title = "CategoryTheme color palettes", isCompleted = true),
-                    SubTask(id = UUID.randomUUID().toString(), title = "CategoryChipsRow filter bar", isCompleted = true)
-                )
-            ),
-            TaskEntity(
-                title = "Explore Minimalist Haptic Gestures",
-                description = "Idea to trigger subtle physical clicks on swipe completion and long press.",
-                category = "Ideas",
-                tags = listOf("design", "ux"),
-                priority = TaskPriority.LOW,
-                dueDate = null,
-                isCompleted = false,
-                subtasks = emptyList()
-            )
-        )
-        repository.insertTasks(sampleTasks)
-    }
-
-    companion object {
-        fun provideFactory(application: Application): ViewModelProvider.Factory =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    val db = AppDatabase.getDatabase(application)
-                    return TaskViewModel(application, db.taskDao(), db.noteDao()) as T
-                }
-            }
-
-        fun provideFactory(application: Application, dao: TaskDao): ViewModelProvider.Factory =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    val db = AppDatabase.getDatabase(application)
-                    return TaskViewModel(application, dao, db.noteDao()) as T
-                }
-            }
+        return streak
     }
 }

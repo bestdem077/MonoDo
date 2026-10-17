@@ -1,6 +1,6 @@
 {
   "name": "MonoDo",
-  "description": "Minimalist monochrome task manager crafted by Vishal Dhangar with smooth animations, subtasks, priority scheduling, and streak analytics.",
+  "description": "100% offline, privacy-focused minimalist productivity workspace with subtle monochrome priority indicators and focus tools.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

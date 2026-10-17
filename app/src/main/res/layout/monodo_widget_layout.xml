@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="14dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <ImageView
+            android:id="@+id/widget_icon"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:src="@drawable/ic_monodo_logo"
+            android:contentDescription="@string/app_name" />
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="MonoDo"
+            android:textColor="#111111"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="3 tasks"
+            android:textColor="#2563EB"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Task Items (up to 3) -->
+    <LinearLayout
+        android:id="@+id/widget_task_1_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingVertical="4dp">
+
+        <ImageView
+            android:id="@+id/widget_task_1_check"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_widget_check_circle"
+            android:contentDescription="Complete" />
+
+        <TextView
+            android:id="@+id/widget_task_1_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="No pending tasks"
+            android:textColor="#111111"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_task_2_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingVertical="4dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/widget_task_2_check"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_widget_check_circle"
+            android:contentDescription="Complete" />
+
+        <TextView
+            android:id="@+id/widget_task_2_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Task 2"
+            android:textColor="#111111"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_task_3_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingVertical="4dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/widget_task_3_check"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_widget_check_circle"
+            android:contentDescription="Complete" />
+
+        <TextView
+            android:id="@+id/widget_task_3_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Task 3"
+            android:textColor="#111111"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+</LinearLayout>

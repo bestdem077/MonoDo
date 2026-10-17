@@ -1,156 +1,51 @@
-# MonoDo — Modular Multi-Screen Architecture & Custom Docked Navigation
+# MonoDo — Quick Deadline Chips & PointerInput Horizontal Swipe Actions Plan
 
-A comprehensive architectural plan to evolve MonoDo from a single-screen feed into a modular, multi-tab productivity experience featuring a custom bottom navigation bar with a centered elevated '+' action button (matching user reference mockup), dedicated Analytics, Productivity Tools, and Settings.
-
----
-
-### User Review & Critical Decisions
-
-> [!IMPORTANT]
-> The architectural foundation and navigation structure have been calibrated against your clarifying answers:
-
-- **Confirmed Navigation Layout (5-Item Structure)**:
-  1. **Tasks Tab**: Pure, uncluttered task feed with category chips, search/priority filtering, and collapsible completed items.
-  2. **Stats Tab**: Dedicated analytics hub featuring the Weekly Productivity Matrix, animated Circular Completion Rate Gauge, and Category Distribution Breakdown.
-  3. **Center '+' Button**: Floating elevated circular black button centered in the bottom dock, opening the full interactive Task & Subtask Creation Sheet.
-  4. **Tools Tab**: Modular utility hub containing a Focus Pomodoro Timer (with start/pause/reset and sound/haptic ticks) and a Quick Scratchpad Notes tool for instant thoughts.
-  5. **Settings Tab**: Comprehensive hub with Developer Profile (Vishal Dhangar), Dynamic App Versioning (`BuildConfig`), Daily Notification Reminders toggle, and Local JSON Data Backup & Restore.
-
-- **Confirmed Center '+' Button Behavior**: Tapping the center elevated button opens the full bottom sheet to configure task titles, descriptions, categories, priorities, due dates, and subtask checklists.
-
-- **Confirmed Analytics Scope**: Weekly matrix, real-time completion gauge, lifetime streak record, and category task distribution.
+## 1. Overview & Goals
+This update refines task creation and task card gesture interactions to make managing daily tasks effortless:
+1. **1-Tap Quick Deadline Chips (`Today`, `Tomorrow`, `This Weekend`, `Next Week`):**
+   - Reusable `QuickDateChipsRow` component placed directly below the task title input field in **both** the **Create Task Bottom Sheet** (`CreateTaskSheet.kt`) and a new **Inline Quick-Add Task Bar** on the main **Tasks Screen** (`MonoDoTasksScreen.kt`).
+2. **Custom `Modifier.pointerInput` Horizontal Swipe Gestures with Haptics (`TaskCard.kt`):**
+   - **Left-to-Right Swipe (`offsetX > 0`):** Drags the card right to reveal a Royal Blue completion backdrop; crossing the threshold fires a crisp haptic tick (`HapticFeedbackHelper`) and toggles task completion before springing back to `0f`.
+   - **Right-to-Left Swipe (`offsetX < 0`):** Slides the foreground card left using `Modifier.pointerInput(task.id) { detectHorizontalDragGestures(...) }` and snaps open (`-actionPanelWidthPx`) to reveal **inline action buttons behind the card** (`Today`, `Tomorrow`, `Delete`), with threshold haptic feedback on reveal and action execution.
 
 ---
 
-### 1. Overview & Core Concept
+## 2. Detailed Component Design
 
-- **What It Delivers**: Transforms MonoDo from a single long scrollable page into a 4-tab powerhouse. Heavy components like the productivity matrix no longer crowd the task list; instead, tasks, deep analytics, productivity tools, and preferences each have their own dedicated space.
-- **Target Persona**: Focused creators, students, and professionals who demand a distraction-free, 100% offline-first productivity tool with immediate tactile feedback and zero latency.
-- **Key Value**:
-  - Eliminates visual clutter on the home screen.
-  - Adds real productivity utilities (Focus Timer + Scratchpad Notes).
-  - Empowers users with complete offline backup/export and profile customization.
+### A. Reusable `QuickDateChipsRow` & Inline Quick-Add Bar
+- **`QuickDateChipsRow` Composable (`app/src/main/java/com/example/ui/components/QuickDateChipsRow.kt`):**
+  - Renders a horizontally scrollable row of 4 primary deadline pills:
+    - **Today** (Today at 23:59:59)
+    - **Tomorrow** (+1 day at 23:59:59)
+    - **This Weekend** (Upcoming Saturday at 23:59:59)
+    - **Next Week** (Upcoming Monday at 23:59:59)
+    - Optional **Custom** date picker pill and clear (`×`) affordance when a date is active.
+  - Highlights the active chip in `RoyalBlue` (`#2563EB`) with white bold text and triggers `HapticFeedbackHelper.performSelectionHaptic` on tap (tapping an already-selected chip toggles it off).
+- **Integration in `CreateTaskSheet.kt`:**
+  - Placed directly beneath `create_task_title_input` so users can set a deadline in one tap without opening a calendar dialog.
+- **Inline Quick-Add Task Bar in `MonoDoTasksScreen.kt`:**
+  - A compact Swiss paper input card at the top of the Tasks workspace with a task title field, submit (`+`) button, and the `QuickDateChipsRow` (`Today`, `Tomorrow`, `This Weekend`, `Next Week`) directly underneath the input field for instant 1-tap task creation with deadlines.
 
----
-
-### 2. User Experience & Visual Design
-
-#### Bottom Navigation Bar Architecture (Matching User Reference Image)
-The bottom bar mirrors the uploaded mockup:
-- **Floating Dock Height**: 64.dp container with subtle hairlines and high-contrast monochrome tokens.
-- **Docked Elevated Center Button**: A prominent 56.dp circular black button (`ObsidianBlack`) with a crisp white `+` icon, slightly elevated with a soft drop shadow, centered between the first two tabs and the last two tabs.
-- **Safe Area Insets**: Explicit `.navigationBarsPadding()` so the bar floats gracefully above Android 3-button navigation and gesture pills on all device screen ratios.
-- **Haptic Tactile Feedback**: Tapping any tab or the center FAB triggers instantaneous mechanical haptic feedback (`HapticFeedbackConstants.GESTURE_START` / `CONFIRM`).
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      Screen Content Area                     │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│  [📋 Tasks]    [📊 Stats]      ( + )      [🧰 Tools]   [⚙️ User] │
-└──────────────────────────────────────────────────────────────┘
-```
-
-#### Detailed Screen Experiences
-
-1. **Tasks Screen (`MonoDoTasksScreen`)**:
-   - Header with Date, Streak Capsule, and Active/Completed counters.
-   - Horizontal Category Pills (`All`, `Focus`, `Work`, `Personal`, `Ideas`).
-   - Search bar and priority filtering pills.
-   - Smooth animated task cards with expandable subtasks and tactile checkboxes.
-
-2. **Stats Screen (`MonoDoStatsScreen`)**:
-   - **Hero Metric**: Large Streak Milestone Card with lifetime completion numbers.
-   - **Weekly Matrix Grid**: 7-day productivity density blocks with day labels.
-   - **Completion Gauge**: Circular progress visual displaying overall completion percentage (`done / total`).
-   - **Category Distribution**: Clean monochrome progress bars showing where time and energy are spent (e.g. Work 45%, Focus 30%, Personal 25%).
-
-3. **Tools Screen (`MonoDoToolsScreen`)**:
-   - **Focus Pomodoro Timer**:
-     - Circular countdown timer (25 min focus / 5 min break).
-     - Start / Pause / Reset tactile controls with animated progress ring.
-     - Session completion counter.
-   - **Quick Scratchpad Notes**:
-     - Fast, distraction-free markdown/plain-text scratchpad stored locally.
-     - Auto-saves as you type without friction.
-
-4. **Settings Screen (`MonoDoSettingsScreen`)**:
-   - **Creator Card**: Prominent "Crafted by Vishal Dhangar" card with badges.
-   - **Version & Build**: Dynamic version name (`v1.0.X`) and build code from `BuildConfig`.
-   - **Daily Reminder Settings**: Time picker and notification switch.
-   - **Data Management (Backup & Restore)**:
-     - "Export JSON Backup" — exports all tasks, subtasks, and streaks to a JSON file.
-     - "Import / Restore Backup" — restores database records seamlessly.
-     - "Clear Completed Tasks" with confirmation dialog.
+### B. `Modifier.pointerInput` Swipe-to-Complete & Swipe-for-Actions (`TaskCard.kt`)
+- **Gesture Mechanics (`Modifier.pointerInput` + `detectHorizontalDragGestures`):**
+  - Uses `Animatable(0f)` for smooth horizontal translation (`IntOffset(offsetX.value.roundToInt(), 0)`).
+  - Tracks `hasTriggeredThresholdHaptic` during the drag gesture so crossing the completion threshold (`+completeThresholdPx`) or action reveal threshold (`-revealThresholdPx`) emits a single crisp haptic pulse (`HapticFeedbackHelper.performSwipeActionHaptic`).
+- **Background Layer (Revealed Behind the Card):**
+  - **When `offsetX > 0` (Swiping Right — Complete):**
+    - Displays a `RoyalBlueSoft` (`#EFF6FF`) surface on the left with a `RoyalBlue` check icon and `"Complete"` / `"Reopen"` label that scales up as the user drags past the threshold.
+    - Releasing past `+completeThresholdPx` fires `HapticFeedbackHelper.performTaskCompletionHaptic`, calls `onToggleCompletion()`, and animates the card back to `0f` with a spring specification.
+  - **When `offsetX < 0` or Snapped Open (Swiping Left — Inline Actions):**
+    - Displays three inline action buttons aligned to the right edge behind the card:
+      1. **Today:** Reschedules task due date to Today (23:59:59), triggers selection haptic, and snaps the card closed (`0f`).
+      2. **Tomorrow:** Reschedules task due date to Tomorrow (23:59:59), triggers selection haptic, and snaps the card closed (`0f`).
+      3. **Delete:** Triggers delete haptic (`performDeleteHaptic`), snaps closed, and invokes `onDeleteTask()`.
+    - Releasing a right-to-left drag past `-revealThresholdPx` snaps the card open to `-maxLeftSwipePx` so the user can tap any of the revealed inline buttons; dragging right or tapping the card closes the revealed actions smoothly.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
-
-- **Custom Compose Dock vs Standard BottomSheet Navigation**:
-  - *Decision*: Build a purpose-tailored custom dock layout using Compose `Row`, `Box`, and `FloatingActionButton`.
-  - *Why*: The standard Android `NavigationBar` places the FAB separately in a floating corner or requires complex scaffold nesting. A custom dock guarantees pixel-perfect replication of the user's mockup with the centered circular FAB.
-- **Navigation State Management (Internal Screen Enum vs Navigation Compose)**:
-  - *Decision*: Clean sealed `NavigationTab` state in `TaskViewModel` with `BackHandler` integration.
-  - *Why*: Retains instant tab switching with zero flicker, preserves shared ViewModel state (e.g. task list, filters, and timer ticks) across tabs, and complies with Android back-press navigation.
-- **Local Persistence Expansion**:
-  - *Decision*: Keep Room as the single source of truth for tasks, and utilize fast `SharedPreferences` / Room for scratchpad notes and timer state.
-  - *Why*: Guarantees 100% offline security, instant cold-starts, and no cloud account overhead.
-
----
-
-### 4. Technical Architecture & System Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              MainActivity                               │
-└────────────────────────────────────┬────────────────────────────────────┘
-                                     │
-                     ┌───────────────┴───────────────┐
-                     ▼                               ▼
-            TaskViewModel                   ReminderPreferences
-                     │
-         ┌───────────┴───────────────────────────────┐
-         ▼                                           ▼
-   AppDatabase (Room)                       UI State (StateFlow)
-   • TaskDao (Tasks & Subtasks)              • activeTab: NavigationTab
-   • Local SQLite Database                   • tasks, stats, query, timer
-         │
-┌────────┴────────────────────────────────────────────────────────────────┐
-│                         MonoDoRootApp (Scaffold)                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Active Screen Body:                                                     │
-│   ├── [Tab: TASKS]    ➔ TasksScreen (Feed, Categories, Search, Cards)    │
-│   ├── [Tab: STATS]    ➔ StatsScreen (Weekly Matrix, Gauge, Distribution)│
-│   ├── [Tab: TOOLS]    ➔ ToolsScreen (Pomodoro Timer & Scratchpad)       │
-│   └── [Tab: SETTINGS] ➔ SettingsScreen (Profile, Reminders, Backup)     │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Floating Overlay:                                                       │
-│   └── CreateTaskSheet (Full modal for task + subtasks + priority)       │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Bottom Custom Navigation Dock:                                          │
-│   [📋 Tasks]   [📊 Stats]   ( ➕ Center Elevated FAB )   [🧰 Tools]  [⚙️ User]│
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-### 5. Implementation Stages (Step-by-Step)
-
-1. **Navigation Core & Data Structures**:
-   - Define `NavigationTab` sealed class/enum (`Tasks`, `Stats`, `Tools`, `Settings`).
-   - Create custom `MonoDoBottomBar` composable with centered elevated FAB and safe-area window insets.
-2. **Dedicated Stats Screen**:
-   - Extract `WeeklyMatrixView` and expand it into a full analytics dashboard with animated completion rate gauge and category distribution cards.
-3. **Dedicated Tools Screen**:
-   - Implement the Focus Pomodoro Timer with start/pause/reset states.
-   - Implement the Quick Scratchpad Notes area with persistence.
-4. **Dedicated Settings Screen**:
-   - Create Vishal Dhangar developer attribution card.
-   - Add JSON export/import handlers for full offline data backup.
-   - Add notification reminder controls and build version telemetry.
-5. **Home Scaffold Integration**:
-   - Connect all screens inside `MainActivity` / `MonoDoRootScreen` with smooth crossfade transitions.
-   - Hook up `BackHandler` so pressing Android back returns to the Tasks tab before exiting.
-6. **Tactile & Visual Polish**:
-   - Verify M3 dynamic insets, haptic vibration triggers on all buttons, and compile verification.
+## 3. Files to Create & Modify
+1. **Create** `app/src/main/java/com/example/ui/components/QuickDateChipsRow.kt` — Reusable composable for `'Today'`, `'Tomorrow'`, `'This Weekend'`, and `'Next Week'` deadline chips + helper timestamp calculators.
+2. **Modify** `app/src/main/java/com/example/ui/components/CreateTaskSheet.kt` — Use `QuickDateChipsRow` directly below the task title input field.
+3. **Modify** `app/src/main/java/com/example/ui/screens/MonoDoTasksScreen.kt` — Add the inline Quick-Add Task Bar with `QuickDateChipsRow` directly below the input field so deadlines and tasks can be added in 1 tap from the Tasks screen.
+4. **Modify** `app/src/main/java/com/example/ui/components/TaskCard.kt` — Replace `SwipeToDismissBox` with a custom `Modifier.pointerInput` (`detectHorizontalDragGestures`) layout that slides the foreground card right to complete and slides/snaps left to reveal inline `Today`, `Tomorrow`, and `Delete` action buttons behind the card with full haptic feedback integration.
+5. **Modify** `app/src/test/java/com/example/ExampleRobolectricTest.kt` — Add unit tests verifying the quick deadline timestamp calculations (`Today`, `Tomorrow`, `This Weekend`, `Next Week`).

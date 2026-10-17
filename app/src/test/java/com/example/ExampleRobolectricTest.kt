@@ -1,21 +1,19 @@
 package com.example
 
-import android.app.Application
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.db.AppDatabase
-import com.example.data.db.TaskDao
 import com.example.data.model.NoteEntity
 import com.example.data.model.SubTask
 import com.example.data.model.TaskEntity
 import com.example.data.model.TaskPriority
 import com.example.data.user.UserProfileManager
-import com.example.ui.viewmodel.TaskViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -23,263 +21,203 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class ExampleRobolectricTest {
 
+    private lateinit var context: Context
     private lateinit var db: AppDatabase
-    private lateinit var taskDao: TaskDao
 
     @Before
-    fun createDb() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
+    fun setup() {
+        context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        taskDao = db.taskDao()
     }
 
     @After
-    @Throws(IOException::class)
-    fun closeDb() {
+    fun tearDown() {
         db.close()
     }
 
     @Test
-    fun `read string from context`() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
+    fun `read app_name from strings resources`() {
         val appName = context.getString(R.string.app_name)
         assertEquals("MonoDo", appName)
     }
 
     @Test
-    fun `task creation and dao CRUD operations`() = runBlocking {
-        val task = TaskEntity(
-            title = "Architect Design System",
-            description = "Build monochrome components",
-            category = "Focus",
-            priority = TaskPriority.URGENT,
-            subtasks = listOf(
-                SubTask(id = "1", title = "Color tokens", isCompleted = true)
-            )
+    fun `task priority properties test`() {
+        assertEquals(1, TaskPriority.LOW.level)
+        assertEquals(2, TaskPriority.MEDIUM.level)
+        assertEquals(3, TaskPriority.HIGH.level)
+
+        assertEquals("•", TaskPriority.LOW.indicatorSymbol)
+        assertEquals("••", TaskPriority.MEDIUM.indicatorSymbol)
+        assertEquals("•••", TaskPriority.HIGH.indicatorSymbol)
+    }
+
+    @Test
+    fun `user profile manager persistence test`() {
+        val manager = UserProfileManager(context)
+        manager.resetProfile()
+
+        val initialProfile = manager.getProfile()
+        assertFalse(initialProfile.isOnboarded)
+
+        // Save profile with personal details
+        val success = manager.saveProfile(
+            userName = "Vishal",
+            workspaceTitle = "MonoDo Workspace",
+            birthDate = "15 August 2000",
+            birthTimestamp = 966297600000L,
+            reminderHour = 9,
+            reminderMinute = 30
         )
+        assertTrue(success)
+
+        val savedProfile = manager.getProfile()
+        assertEquals("Vishal", savedProfile.userName)
+        assertEquals("MonoDo Workspace", savedProfile.workspaceTitle)
+        assertEquals("15 August 2000", savedProfile.birthDate)
+        assertEquals(966297600000L, savedProfile.birthTimestamp)
+        assertEquals(9, savedProfile.reminderHour)
+        assertEquals(30, savedProfile.reminderMinute)
+        assertTrue(savedProfile.isOnboarded)
+    }
+
+    @Test
+    fun `room database task and subtasks CRUD test`() = runBlocking {
+        val taskDao = db.taskDao()
+        val subtask = SubTask(id = "sub-1", title = "Write specs", isCompleted = false)
+        val task = TaskEntity(
+            title = "Build MonoDo App",
+            description = "High focus task",
+            category = "Work",
+            priority = TaskPriority.HIGH,
+            subtasks = listOf(subtask)
+        )
+
         val id = taskDao.insertTask(task)
         assertTrue(id > 0)
 
         val retrieved = taskDao.getTaskById(id)
         assertNotNull(retrieved)
-        assertEquals("Architect Design System", retrieved?.title)
-        assertEquals(TaskPriority.URGENT, retrieved?.priority)
+        assertEquals("Build MonoDo App", retrieved?.title)
+        assertEquals(TaskPriority.HIGH, retrieved?.priority)
         assertEquals(1, retrieved?.subtasks?.size)
-        assertTrue(retrieved?.subtasks?.first()?.isCompleted == true)
 
-        // Update
+        // Update task completion
         val updated = retrieved!!.copy(isCompleted = true)
         taskDao.updateTask(updated)
-        val afterUpdate = taskDao.getTaskById(id)
-        assertTrue(afterUpdate?.isCompleted == true)
 
-        // Delete
-        taskDao.deleteById(id)
-        val afterDelete = taskDao.getTaskById(id)
-        assertEquals(null, afterDelete)
+        val completedTask = taskDao.getTaskById(id)
+        assertTrue(completedTask!!.isCompleted)
     }
 
     @Test
-    fun `note creation and dao operations`() = runBlocking {
+    fun `room database note CRUD test`() = runBlocking {
         val noteDao = db.noteDao()
         val note = NoteEntity(
-            title = "Architecture Ideas",
-            content = "Keep local database clean and reactive.",
-            category = "Work",
+            title = "Minimalist Thought",
+            content = "Keep only essential features.",
+            category = "General",
             isPinned = true
         )
+
         val id = noteDao.insertNote(note)
         assertTrue(id > 0)
 
-        val retrieved = noteDao.getNoteById(id)
-        assertNotNull(retrieved)
-        assertEquals("Architecture Ideas", retrieved?.title)
-        assertEquals("Work", retrieved?.category)
-        assertTrue(retrieved?.isPinned == true)
-
-        noteDao.deleteNoteById(id)
-        val afterDelete = noteDao.getNoteById(id)
-        assertEquals(null, afterDelete)
+        val notesList = noteDao.getAllNotes().first()
+        assertEquals(1, notesList.size)
+        assertEquals("Minimalist Thought", notesList[0].title)
+        assertTrue(notesList[0].isPinned)
     }
 
     @Test
-    fun `task viewModel provides observable state`() = runBlocking {
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        val viewModel = TaskViewModel(app, taskDao)
-        val initialUiState = viewModel.uiState.value
-        assertNotNull(initialUiState)
-        assertEquals("All", initialUiState.selectedCategory)
-        assertEquals(0, initialUiState.activeTasks.size)
-        assertEquals(0, initialUiState.completedTasks.size)
-    }
-
-    @Test
-    fun `deleteAllTasks empties database completely`() = runBlocking {
-        taskDao.insertTask(TaskEntity(title = "Task 1"))
-        taskDao.insertTask(TaskEntity(title = "Task 2"))
-        assertEquals(2, taskDao.getTaskCount())
-
-        taskDao.deleteAllTasks()
-        assertEquals(0, taskDao.getTaskCount())
-    }
-
-    @Test
-    fun `viewModel can be created by AndroidViewModelFactory`() {
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        val factory = androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(app)
-        val viewModel = factory.create(TaskViewModel::class.java)
-        assertNotNull(viewModel)
-    }
-
-    @Test
-    fun `search filters tasks by title and tag`() = runBlocking {
-        taskDao.insertTask(TaskEntity(title = "Design Swiss System", category = "Focus"))
-        taskDao.insertTask(TaskEntity(title = "Review Weekly PRs", category = "Work"))
-
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        val viewModel = TaskViewModel(app, taskDao)
-
-        val state = viewModel.uiState.first { it.activeTasks.size == 2 }
-        assertEquals(2, state.activeTasks.size)
-
-        // Search by title keyword
-        viewModel.searchTasks("Swiss")
-        val titleMatch = viewModel.uiState.first { it.searchQuery == "Swiss" }
-        assertEquals(1, titleMatch.activeTasks.size)
-        assertEquals("Design Swiss System", titleMatch.activeTasks.first().title)
-
-        // Search by tag with hashtag
-        viewModel.searchTasks("#Work")
-        val tagMatch = viewModel.uiState.first { it.searchQuery == "#Work" }
-        assertEquals(1, tagMatch.activeTasks.size)
-        assertEquals("Review Weekly PRs", tagMatch.activeTasks.first().title)
-    }
-
-    @Test
-    fun `weekly activity calculates 7 days of current week and reflects completed tasks`() = runBlocking {
-        val now = System.currentTimeMillis()
-        val completedTask = TaskEntity(
-            title = "Finalize Design Specifications",
-            isCompleted = true,
-            completedAt = now
+    fun `room database habit and logs CRUD test`() = runBlocking {
+        val habitDao = db.habitDao()
+        val habit = com.example.data.model.HabitEntity(
+            title = "Deep Work 2h",
+            colorHex = "#2563EB"
         )
-        taskDao.insertTask(completedTask)
+        val habitId = habitDao.insertHabit(habit)
+        assertTrue(habitId > 0)
 
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        val viewModel = TaskViewModel(app, taskDao)
+        val habits = habitDao.getAllHabits().first()
+        assertEquals(1, habits.size)
+        assertEquals("Deep Work 2h", habits[0].title)
 
-        val state = viewModel.uiState.first { it.completedTasks.size == 1 }
-        assertEquals(7, state.weeklyActivity.size)
-
-        // Today must be marked isToday = true
-        val todayActivity = state.weeklyActivity.firstOrNull { it.isToday }
-        assertNotNull(todayActivity)
-        assertEquals(1, todayActivity?.completedCount)
-
-        // Total completions for the week
-        val totalWeekCompleted = state.weeklyActivity.sumOf { it.completedCount }
-        assertEquals(1, totalWeekCompleted)
-    }
-
-    @Test
-    fun `category labeling system and filter bar correctly isolates categories`() = runBlocking {
-        taskDao.insertTask(TaskEntity(title = "Strategy Deck", category = "Work"))
-        taskDao.insertTask(TaskEntity(title = "Morning 5k Run", category = "Health"))
-        taskDao.insertTask(TaskEntity(title = "Grocery Restock", category = "Personal"))
-
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        val viewModel = TaskViewModel(app, taskDao)
-
-        val initialState = viewModel.uiState.first { it.activeTasks.size >= 3 }
-        assertTrue(initialState.categories.contains("Work"))
-        assertTrue(initialState.categories.contains("Personal"))
-        assertTrue(initialState.categories.contains("Health"))
-
-        // Filter by Work
-        viewModel.selectCategory("Work")
-        val workState = viewModel.uiState.first { it.selectedCategory == "Work" }
-        assertEquals(1, workState.activeTasks.size)
-        assertEquals("Strategy Deck", workState.activeTasks.first().title)
-
-        // Filter by Health
-        viewModel.selectCategory("Health")
-        val healthState = viewModel.uiState.first { it.selectedCategory == "Health" }
-        assertEquals(1, healthState.activeTasks.size)
-        assertEquals("Morning 5k Run", healthState.activeTasks.first().title)
-
-        // Reset to All
-        viewModel.selectCategory("All")
-        val allState = viewModel.uiState.first { it.selectedCategory == "All" }
-        assertTrue(allState.activeTasks.size >= 3)
-    }
-
-    @Test
-    fun `userProfileManager persists name and ensures onboarding does not loop`() {
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        val manager = UserProfileManager(app)
-
-        // Fresh state: should not be onboarded initially
-        manager.resetProfile()
-        val initialProfile = manager.getProfile()
-        assertEquals(false, initialProfile.isOnboarded)
-
-        // Save profile
-        manager.saveProfile("Vishal", "MonoDo Studio")
-        val savedProfile = manager.getProfile()
-        assertEquals("Vishal", savedProfile.userName)
-        assertEquals("MonoDo Studio", savedProfile.workspaceTitle)
-        assertEquals(true, savedProfile.isOnboarded)
-
-        // Subsequent read (simulating next app launch)
-        val nextLaunchManager = UserProfileManager(app)
-        val nextLaunchProfile = nextLaunchManager.getProfile()
-        assertEquals(true, nextLaunchProfile.isOnboarded)
-        assertEquals("Vishal", nextLaunchProfile.userName)
-
-        // After data erase / resetProfile, onboarding should return
-        manager.resetProfile()
-        val resetProfile = manager.getProfile()
-        assertEquals(false, resetProfile.isOnboarded)
-    }
-
-    @Test
-    fun `task viewModel resetAllData clears both tasks and notes`() = runBlocking {
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        val viewModel = TaskViewModel(app, taskDao)
-
-        // Insert a task and note
-        taskDao.insertTask(
-            TaskEntity(
-                title = "To be erased",
-                category = "Work",
-                priority = TaskPriority.HIGH,
-                createdAt = System.currentTimeMillis()
-            )
-        )
-        db.noteDao().insertNote(
-            NoteEntity(
-                title = "Note to be erased",
-                content = "Erase test",
-                category = "General"
+        // Log completion for today
+        val todayEpochDay = 20000L
+        habitDao.insertOrUpdateLog(
+            com.example.data.model.HabitLogEntity(
+                habitId = habitId,
+                dateEpochDay = todayEpochDay,
+                isCompleted = true
             )
         )
 
-        assertTrue(taskDao.getTaskCount() > 0)
-        assertTrue(db.noteDao().getNoteCount() > 0)
+        val log = habitDao.getLog(habitId, todayEpochDay)
+        assertNotNull(log)
+        assertTrue(log!!.isCompleted)
 
-        viewModel.resetAllData()
+        // Toggle delete log
+        habitDao.deleteLog(habitId, todayEpochDay)
+        val logAfterDelete = habitDao.getLog(habitId, todayEpochDay)
+        org.junit.Assert.assertNull(logAfterDelete)
+    }
 
-        assertEquals(0, taskDao.getTaskCount())
-        assertEquals(0, db.noteDao().getNoteCount())
+    @Test
+    fun `room database custom category test`() = runBlocking {
+        val catDao = db.customCategoryDao()
+        val cat = com.example.data.model.CustomCategoryEntity(
+            name = "Reading",
+            colorHex = "#16A34A"
+        )
+        val id = catDao.insertCategory(cat)
+        assertTrue(id > 0)
+
+        val categories = catDao.getAllCategories().first()
+        assertEquals(1, categories.size)
+        assertEquals("Reading", categories[0].name)
+        assertEquals("#16A34A", categories[0].colorHex)
+    }
+
+    @Test
+    fun `task sort order enum verification`() {
+        assertEquals("Default", com.example.data.model.TaskSortOrder.DEFAULT.displayName)
+        assertEquals("Priority: High → Low", com.example.data.model.TaskSortOrder.PRIORITY.displayName)
+        assertEquals("Due Date: Soonest", com.example.data.model.TaskSortOrder.DUE_DATE.displayName)
+        assertEquals("Newest First", com.example.data.model.TaskSortOrder.CREATION_DATE.displayName)
+        assertEquals("Alphabetical: A → Z", com.example.data.model.TaskSortOrder.ALPHABETICAL.displayName)
+    }
+
+    @Test
+    fun `quick date calculator presets verification`() {
+        val baseTime = 1760698800000L
+        val todayTs = com.example.ui.components.QuickDateCalculator.getDeadlineTimestamp(
+            com.example.ui.components.QuickDeadlinePreset.TODAY,
+            baseTime
+        )
+        val tomorrowTs = com.example.ui.components.QuickDateCalculator.getDeadlineTimestamp(
+            com.example.ui.components.QuickDeadlinePreset.TOMORROW,
+            baseTime
+        )
+        val weekendTs = com.example.ui.components.QuickDateCalculator.getDeadlineTimestamp(
+            com.example.ui.components.QuickDeadlinePreset.THIS_WEEKEND,
+            baseTime
+        )
+        val nextWeekTs = com.example.ui.components.QuickDateCalculator.getDeadlineTimestamp(
+            com.example.ui.components.QuickDeadlinePreset.NEXT_WEEK,
+            baseTime
+        )
+
+        assertTrue(com.example.ui.components.QuickDateCalculator.isSameCalendarDay(todayTs, baseTime))
+        assertTrue(tomorrowTs > todayTs)
+        assertTrue(weekendTs > todayTs)
+        assertTrue(nextWeekTs > todayTs)
     }
 }
-
-

@@ -1,9 +1,19 @@
 package com.example.ui.screens
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +22,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,22 +32,28 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircleOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.OfflineBolt
-import androidx.compose.material.icons.filled.PersonOutline
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Cake
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,8 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -56,253 +70,480 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.ui.theme.DateTileBackground
 import com.example.ui.theme.FocusedBackground
 import com.example.ui.theme.HairlineBorder
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperCanvas
 import com.example.ui.theme.PaperSurface
 import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.RoyalBlueBorder
 import com.example.ui.theme.RoyalBlueSoft
 import com.example.ui.theme.SlateGraphite
-import com.example.ui.util.HapticFeedbackHelper
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun MonoDoOnboardingScreen(
     initialUserName: String = "",
-    initialWorkspaceTitle: String = "MonoDo",
-    onComplete: (userName: String, workspaceTitle: String) -> Unit,
-    modifier: Modifier = Modifier
+    initialBirthDate: String = "",
+    initialBirthTimestamp: Long = 0L,
+    initialReminderHour: Int = 9,
+    initialReminderMinute: Int = 0,
+    onComplete: (
+        name: String,
+        birthDate: String,
+        birthTimestamp: Long,
+        isReminderEnabled: Boolean,
+        reminderHour: Int,
+        reminderMinute: Int
+    ) -> Unit
 ) {
-    val view = LocalView.current
-    val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+    var currentStep by remember { mutableIntStateOf(0) } // 0: Name, 1: Date of Birth, 2: Reminder Time
 
-    var userName by remember { mutableStateOf(initialUserName) }
-    var workspaceTitle by remember { mutableStateOf(if (initialWorkspaceTitle.isNotBlank()) initialWorkspaceTitle else "MonoDo") }
+    var nameInput by remember { mutableStateOf(initialUserName) }
+    var nameError by remember { mutableStateOf(false) }
 
-    // Prevent repeated onboarding loop if user hits back button
-    BackHandler {
-        HapticFeedbackHelper.performSelectionHaptic(view, haptic)
-        onComplete(userName.trim(), workspaceTitle.trim().ifBlank { "MonoDo" })
+    var birthDateText by remember { mutableStateOf(initialBirthDate) }
+    var birthTimestamp by remember { mutableLongStateOf(initialBirthTimestamp) }
+
+    var isReminderEnabled by remember { mutableStateOf(true) }
+    var reminderHour by remember { mutableIntStateOf(initialReminderHour) }
+    var reminderMinute by remember { mutableIntStateOf(initialReminderMinute) }
+
+    // Intercept back button when past step 0
+    BackHandler(enabled = currentStep > 0) {
+        currentStep -= 1
     }
 
-    Column(
-        modifier = modifier
+    val showDatePicker = {
+        val cal = Calendar.getInstance()
+        if (birthTimestamp > 0) cal.timeInMillis = birthTimestamp
+        else cal.add(Calendar.YEAR, -24)
+
+        val dialog = DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                val chosen = Calendar.getInstance().apply {
+                    set(year, month, day, 0, 0, 0)
+                }
+                birthTimestamp = chosen.timeInMillis
+                val sdf = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+                birthDateText = sdf.format(Date(birthTimestamp))
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        )
+        dialog.show()
+    }
+
+    val showTimePicker = {
+        val dialog = TimePickerDialog(
+            context,
+            { _, hour, minute ->
+                reminderHour = hour
+                reminderMinute = minute
+            },
+            reminderHour,
+            reminderMinute,
+            false
+        )
+        dialog.show()
+    }
+
+    Surface(
+        modifier = Modifier
             .fillMaxSize()
-            .background(PaperCanvas)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+            .testTag("monodo_onboarding_screen"),
+        color = PaperCanvas
     ) {
         Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Emboldened App Logo inside soft modern circular avatar container (Finora-inspired)
-            Box(
-                modifier = Modifier
-                    .size(104.dp)
-                    .clip(CircleShape)
-                    .background(RoyalBlueSoft)
-                    .border(1.5.dp, RoyalBlueBorder.copy(alpha = 0.8f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_monodo_logo),
-                    contentDescription = "MonoDo Logo",
-                    modifier = Modifier.size(76.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(22.dp))
-
-            Text(
-                text = "Welcome to MonoDo",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.5).sp
-                ),
-                color = ObsidianBlack,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Personalize your distraction-free workspace. 100% offline, private, and focused.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = SlateGraphite,
-                lineHeight = 22.sp,
-                modifier = Modifier.padding(horizontal = 16.dp),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // Form Section Card
+            // Top Section: MonoDo Emblem Logo & Step Progress Bar
             Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(20.dp))
-                    .padding(20.dp)
+                    .padding(top = 28.dp)
             ) {
-                // Input 1: User's Name
-                Text(
-                    text = "YOUR NAME",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SlateGraphite,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = userName,
-                    onValueChange = { userName = it },
-                    placeholder = { Text("Enter your name (e.g. Alex)", color = SlateGraphite) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.PersonOutline,
-                            contentDescription = "User Name",
-                            tint = if (userName.isNotBlank()) RoyalBlue else SlateGraphite,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    },
+                // Emboldened MonoDo Emblem Vector Logo
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("onboarding_user_name_input"),
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = ObsidianBlack),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = ObsidianBlack,
-                        unfocusedTextColor = ObsidianBlack,
-                        cursorColor = RoyalBlue,
-                        focusedBorderColor = RoyalBlue,
-                        unfocusedBorderColor = HairlineBorder,
-                        focusedContainerColor = FocusedBackground,
-                        unfocusedContainerColor = PaperCanvas
+                        .size(80.dp)
+                        .shadow(elevation = 8.dp, shape = CircleShape, spotColor = RoyalBlue.copy(alpha = 0.25f))
+                        .clip(CircleShape)
+                        .background(PaperSurface)
+                        .border(1.5.dp, HairlineBorder, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_monodo_logo),
+                        contentDescription = "MonoDo Emblem",
+                        modifier = Modifier.size(54.dp)
                     )
-                )
+                }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Input 2: App / Workspace Title
                 Text(
-                    text = "APP / WORKSPACE NAME",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "MonoDo",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                    color = ObsidianBlack,
+                    letterSpacing = (-0.5).sp
+                )
+
+                Text(
+                    text = "Minimalist Workspace",
+                    style = MaterialTheme.typography.bodySmall,
                     color = SlateGraphite,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Medium,
                     letterSpacing = 1.sp
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = workspaceTitle,
-                    onValueChange = { workspaceTitle = it },
-                    placeholder = { Text("Customize app name (e.g. MonoDo)", color = SlateGraphite) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Workspace Name",
-                            tint = if (workspaceTitle != "MonoDo" && workspaceTitle.isNotBlank()) RoyalBlue else SlateGraphite,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    },
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Smooth Step Indicators (3 steps)
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("onboarding_workspace_title_input"),
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = ObsidianBlack),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = ObsidianBlack,
-                        unfocusedTextColor = ObsidianBlack,
-                        cursorColor = RoyalBlue,
-                        focusedBorderColor = RoyalBlue,
-                        unfocusedBorderColor = HairlineBorder,
-                        focusedContainerColor = FocusedBackground,
-                        unfocusedContainerColor = PaperCanvas
-                    )
-                )
+                        .fillMaxWidth(0.55f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    repeat(3) { stepIndex ->
+                        val isActive = stepIndex == currentStep
+                        val isDone = stepIndex < currentStep
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    when {
+                                        isActive -> RoyalBlue
+                                        isDone -> ObsidianBlack
+                                        else -> HairlineBorder
+                                    }
+                                )
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Value pillars
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                FeaturePill(icon = Icons.Default.OfflineBolt, label = "100% Offline")
-                FeaturePill(icon = Icons.Default.Shield, label = "Zero Tracking")
-                FeaturePill(icon = Icons.Default.CheckCircleOutline, label = "Habit Streaks")
-            }
-        }
-
-        // Bottom CTA Buttons (Finora-style pill button with Royal Blue color)
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp, bottom = 8.dp)
-        ) {
-            Button(
-                onClick = {
-                    HapticFeedbackHelper.performTaskCreationHaptic(view, haptic)
-                    onComplete(userName.trim(), workspaceTitle.trim().ifBlank { "MonoDo" })
-                },
+            // Main Step Content Card with Animated Transitions
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .shadow(elevation = 6.dp, shape = RoundedCornerShape(28.dp), spotColor = RoyalBlue.copy(alpha = 0.35f))
-                    .testTag("onboarding_continue_btn"),
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = RoyalBlue,
-                    contentColor = Color.White
-                )
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(PaperSurface)
+                    .border(1.dp, HairlineBorder, RoundedCornerShape(24.dp))
+                    .padding(24.dp)
             ) {
+                AnimatedContent(
+                    targetState = currentStep,
+                    transitionSpec = {
+                        if (targetState > initialState) {
+                            (slideInHorizontally { width -> width } + fadeIn()).togetherWith(
+                                slideOutHorizontally { width -> -width } + fadeOut()
+                            )
+                        } else {
+                            (slideInHorizontally { width -> -width } + fadeIn()).togetherWith(
+                                slideOutHorizontally { width -> width } + fadeOut()
+                            )
+                        }
+                    },
+                    label = "onboardingStepTransition"
+                ) { targetStep ->
+                    when (targetStep) {
+                        0 -> NameStep(
+                            name = nameInput,
+                            onNameChange = {
+                                nameInput = it
+                                if (it.isNotBlank()) nameError = false
+                            },
+                            isError = nameError
+                        )
+
+                        1 -> BirthDateStep(
+                            birthDateText = birthDateText,
+                            onPickDate = showDatePicker
+                        )
+
+                        2 -> ReminderStep(
+                            isReminderEnabled = isReminderEnabled,
+                            onReminderToggle = { isReminderEnabled = it },
+                            reminderHour = reminderHour,
+                            reminderMinute = reminderMinute,
+                            onPickTime = showTimePicker,
+                            onSelectPreset = { hour, minute ->
+                                reminderHour = hour
+                                reminderMinute = minute
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Bottom Section: Continue / Enter MonoDo Button & Offline Privacy Assurance
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Button(
+                    onClick = {
+                        when (currentStep) {
+                            0 -> {
+                                if (nameInput.trim().isBlank()) {
+                                    nameError = true
+                                } else {
+                                    currentStep = 1
+                                }
+                            }
+                            1 -> {
+                                currentStep = 2
+                            }
+                            2 -> {
+                                onComplete(
+                                    nameInput.trim(),
+                                    birthDateText.trim(),
+                                    birthTimestamp,
+                                    isReminderEnabled,
+                                    reminderHour,
+                                    reminderMinute
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(27.dp),
+                            spotColor = RoyalBlue.copy(alpha = 0.35f)
+                        )
+                        .testTag("onboarding_continue_btn"),
+                    shape = RoundedCornerShape(27.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = RoyalBlue,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = if (currentStep == 2) "Enter MonoDo" else "Continue",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = if (currentStep == 2) Icons.Default.Check else Icons.Default.ArrowForward,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 100% Offline Privacy Reassurance
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = if (workspaceTitle.isNotBlank() && workspaceTitle.trim() != "MonoDo") "Enter ${workspaceTitle.trim()}" else "Enter MonoDo",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = "Proceed",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Offline Lock",
+                        tint = SlateGraphite,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "100% Offline • Kept securely on your device",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SlateGraphite,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 11.sp
                     )
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(12.dp))
+@Composable
+private fun NameStep(
+    name: String,
+    onNameChange: (String) -> Unit,
+    isError: Boolean
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(RoyalBlueSoft),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    tint = RoyalBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Welcome to MonoDo",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = ObsidianBlack
+            )
+        }
 
-            TextButton(
-                onClick = {
-                    HapticFeedbackHelper.performSelectionHaptic(view, haptic)
-                    onComplete("", "MonoDo")
-                },
-                modifier = Modifier.testTag("onboarding_skip_btn")
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = "What is your name? We'll personalize your daily workspace and progress cards.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SlateGraphite,
+            lineHeight = 20.sp
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        com.example.ui.components.CompactFormTextField(
+            value = name,
+            onValueChange = onNameChange,
+            placeholder = "Enter your name",
+            singleLine = true,
+            fontWeight = FontWeight.SemiBold,
+            isError = isError,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("onboarding_name_input")
+        )
+
+        if (isError) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Please enter your name to personalize your workspace",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+@Composable
+private fun BirthDateStep(
+    birthDateText: String,
+    onPickDate: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(RoyalBlueSoft),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Cake,
+                    contentDescription = null,
+                    tint = RoyalBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "When is your birthday?",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = ObsidianBlack
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = "Used to celebrate your milestones and tailor your productivity cycle.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SlateGraphite,
+            lineHeight = 20.sp
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Date Picker Trigger Card
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(PaperCanvas)
+                .border(1.dp, HairlineBorder, RoundedCornerShape(14.dp))
+                .clickable { onPickDate() }
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .testTag("onboarding_dob_picker"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.CalendarMonth,
+                    contentDescription = "Choose Date",
+                    tint = if (birthDateText.isNotBlank()) RoyalBlue else SlateGraphite,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = if (birthDateText.isNotBlank()) birthDateText else "Select date of birth",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (birthDateText.isNotBlank()) ObsidianBlack else SlateGraphite,
+                    fontWeight = if (birthDateText.isNotBlank()) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(DateTileBackground)
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Text(
-                    text = "Skip and enter MonoDo",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SlateGraphite,
-                    fontWeight = FontWeight.Medium
+                    text = if (birthDateText.isNotBlank()) "Change" else "Choose",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = RoyalBlue,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -310,31 +551,179 @@ fun MonoDoOnboardingScreen(
 }
 
 @Composable
-private fun FeaturePill(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String
+private fun ReminderStep(
+    isReminderEnabled: Boolean,
+    onReminderToggle: (Boolean) -> Unit,
+    reminderHour: Int,
+    reminderMinute: Int,
+    onPickTime: () -> Unit,
+    onSelectPreset: (hour: Int, minute: Int) -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(RoyalBlueSoft)
-            .border(1.dp, RoyalBlueBorder.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+    val presets = listOf(
+        Triple("Morning", 8, 0),
+        Triple("Focus Start", 9, 0),
+        Triple("Mid-day", 13, 0),
+        Triple("Evening", 20, 0)
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = RoyalBlue,
-            modifier = Modifier.size(14.dp)
-        )
-        Spacer(modifier = Modifier.width(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(RoyalBlueSoft),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.NotificationsActive,
+                    contentDescription = null,
+                    tint = RoyalBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Daily Reminder",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = ObsidianBlack
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = ObsidianBlack,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp
+            text = "Stay consistent with a single distraction-free daily prompt.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SlateGraphite,
+            lineHeight = 20.sp
         )
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Toggle row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(PaperCanvas)
+                .border(1.dp, HairlineBorder, RoundedCornerShape(14.dp))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Enable Daily Prompt",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ObsidianBlack,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Switch(
+                checked = isReminderEnabled,
+                onCheckedChange = onReminderToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = RoyalBlue,
+                    uncheckedThumbColor = SlateGraphite,
+                    uncheckedTrackColor = DateTileBackground
+                )
+            )
+        }
+
+        AnimatedVisibility(visible = isReminderEnabled) {
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                // Time Card Trigger
+                val formattedTime = remember(reminderHour, reminderMinute) {
+                    val cal = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, reminderHour)
+                        set(Calendar.MINUTE, reminderMinute)
+                    }
+                    val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
+                    sdf.format(cal.time)
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(PaperCanvas)
+                        .border(1.dp, HairlineBorder, RoundedCornerShape(14.dp))
+                        .clickable { onPickTime() }
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .testTag("onboarding_reminder_time_picker"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Alarm,
+                            contentDescription = "Time",
+                            tint = RoyalBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = formattedTime,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = ObsidianBlack
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DateTileBackground)
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = "Set Custom",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = RoyalBlue,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Presets
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    presets.forEach { (label, h, m) ->
+                        val isSelected = reminderHour == h && reminderMinute == m
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) ObsidianBlack else PaperCanvas)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) ObsidianBlack else HairlineBorder,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { onSelectPreset(h, m) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) Color.White else SlateGraphite,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

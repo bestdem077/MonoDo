@@ -1,10 +1,11 @@
 package com.example.ui.components
 
 import android.app.DatePickerDialog
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,21 +13,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import com.example.ui.theme.CategoryTheme
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -47,25 +52,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.util.HapticFeedbackHelper
 import com.example.data.model.TaskPriority
+import com.example.ui.theme.CategoryTheme
 import com.example.ui.theme.FocusedBackground
 import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.LightPill
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperCanvas
 import com.example.ui.theme.PaperSurface
 import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.SlateGraphite
-import com.example.ui.theme.SoftBorderGrey
+import com.example.ui.util.HapticFeedbackHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -76,66 +84,95 @@ import java.util.Locale
 fun CreateTaskSheet(
     sheetState: SheetState,
     onDismiss: () -> Unit,
-    onSaveTask: (
+    availableCategories: List<String> = listOf("Work", "Personal", "Health", "Focus", "Finance", "General"),
+    onAddCustomCategory: ((name: String, colorHex: String) -> Unit)? = null,
+    onCreateTask: (
         title: String,
         description: String,
         category: String,
-        tags: List<String>,
         priority: TaskPriority,
         dueDate: Long?,
         subtasks: List<String>
-    ) -> Unit,
-    modifier: Modifier = Modifier
+    ) -> Unit
 ) {
     val context = LocalContext.current
     val view = LocalView.current
-    val hapticFeedback = LocalHapticFeedback.current
+    val haptic = LocalHapticFeedback.current
+
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Work") }
     var selectedPriority by remember { mutableStateOf(TaskPriority.MEDIUM) }
-    var selectedDueDate by remember { mutableStateOf<Long?>(null) }
-    var newSubtaskText by remember { mutableStateOf("") }
+    var dueDate by remember {
+        mutableStateOf<Long?>(QuickDateCalculator.getDeadlineTimestamp(QuickDeadlinePreset.TODAY))
+    }
+    var newSubtaskInput by remember { mutableStateOf("") }
     val subtasksList = remember { mutableStateListOf<String>() }
-    var newTagText by remember { mutableStateOf("") }
-    val tagsList = remember { mutableStateListOf<String>() }
-    var isCustomCategorySelected by remember { mutableStateOf(false) }
-    var customCategoryText by remember { mutableStateOf("") }
 
-    val presetCategories = listOf("Work", "Personal", "Health", "Focus", "Ideas")
+    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
+    var selectedCategoryColorHex by remember { mutableStateOf("#2563EB") }
 
-    val calendar = Calendar.getInstance()
-    val datePickerDialog = remember {
-        DatePickerDialog(
+    val categories = remember(availableCategories) {
+        val filtered = availableCategories.filter { !it.equals("All", ignoreCase = true) }
+        if (filtered.isEmpty()) listOf("Work", "Personal", "Health", "Focus", "Finance", "General") else filtered
+    }
+
+    val submitTaskNow = {
+        if (title.isNotBlank()) {
+            HapticFeedbackHelper.performTaskCreationHaptic(view, haptic)
+            onCreateTask(
+                title.trim(),
+                description.trim(),
+                selectedCategory,
+                selectedPriority,
+                dueDate,
+                subtasksList.toList()
+            )
+            onDismiss()
+        }
+    }
+
+    val showDatePicker = {
+        val cal = Calendar.getInstance()
+        val dialog = DatePickerDialog(
             context,
-            { _, year, month, dayOfMonth ->
-                val cal = Calendar.getInstance().apply {
-                    set(year, month, dayOfMonth, 23, 59, 59)
+            { _, year, month, day ->
+                val chosen = Calendar.getInstance().apply {
+                    set(year, month, day, 23, 59, 59)
                 }
-                selectedDueDate = cal.timeInMillis
+                dueDate = chosen.timeInMillis
+                HapticFeedbackHelper.performSelectionHaptic(view, haptic)
             },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
         )
+        dialog.show()
     }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = PaperSurface,
-        modifier = modifier
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 8.dp)
+                    .width(34.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFFD4D4CE))
+            )
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .imePadding()
-                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -143,119 +180,187 @@ fun CreateTaskSheet(
             ) {
                 Text(
                     text = "New Task",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleLarge,
                     color = ObsidianBlack,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.4).sp
                 )
-                IconButton(onClick = onDismiss) {
+
+                // Compact Quick-Save Pill in Header for 1-Tap Instant Creation
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (title.isNotBlank()) RoyalBlue else PaperCanvas)
+                        .border(
+                            1.dp,
+                            if (title.isNotBlank()) RoyalBlue else HairlineBorder,
+                            RoundedCornerShape(999.dp)
+                        )
+                        .clickable(enabled = title.isNotBlank()) { submitTaskNow() }
+                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                        .testTag("quick_instant_save_task_btn"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "Quick Add",
+                            tint = if (title.isNotBlank()) Color.White else SlateGraphite,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Quick Save",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (title.isNotBlank()) Color.White else SlateGraphite,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 1. Compact Task Title Input + Inline 1-Tap Add Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CompactFormTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    placeholder = "What needs to be done?",
+                    singleLine = true,
+                    fontWeight = FontWeight.SemiBold,
+                    imeAction = ImeAction.Done,
+                    onImeAction = { submitTaskNow() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("create_task_title_input")
+                )
+
+                // Small 1-Tap Instant Add Icon Button right next to Title Input
+                IconButton(
+                    onClick = { submitTaskNow() },
+                    enabled = title.isNotBlank(),
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (title.isNotBlank()) RoyalBlue else PaperCanvas)
+                        .border(
+                            1.dp,
+                            if (title.isNotBlank()) RoyalBlue else HairlineBorder,
+                            RoundedCornerShape(10.dp)
+                        )
+                        .testTag("inline_title_quick_add_btn")
+                ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = SlateGraphite
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Instant Add Task",
+                        tint = if (title.isNotBlank()) Color.White else SlateGraphite,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Title input
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("Task Title") },
-                placeholder = { Text("What needs to be done?", color = SlateGraphite) },
+            // 2. 1-Tap Quick Due Date Chips Directly Below Text Field ("Today", "Tomorrow", "This Weekend", "Next Week")
+            QuickDateChipsRow(
+                selectedDueDate = dueDate,
+                onDueDateChange = { dueDate = it },
+                onCustomDateClick = { showDatePicker() }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 3. Compact Task Description / Notes (optional) - Slim single-line default height
+            CompactFormTextField(
+                value = description,
+                onValueChange = { description = it },
+                placeholder = "Notes or details (optional)",
+                singleLine = false,
+                maxLines = 2,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("task_title_input"),
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = ObsidianBlack),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = ObsidianBlack,
-                    unfocusedTextColor = ObsidianBlack,
-                    cursorColor = ObsidianBlack,
-                    focusedBorderColor = SoftBorderGrey,
-                    unfocusedBorderColor = HairlineBorder,
-                    focusedLabelColor = ObsidianBlack,
-                    unfocusedLabelColor = SlateGraphite,
-                    focusedContainerColor = FocusedBackground,
-                    unfocusedContainerColor = PaperCanvas
-                )
+                    .testTag("create_task_notes_input")
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Description / notes
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text("Description / Notes (Optional)") },
-                placeholder = { Text("Add details, links, or context...", color = SlateGraphite) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("task_description_input"),
-                minLines = 3,
-                maxLines = 5,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = ObsidianBlack),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = ObsidianBlack,
-                    unfocusedTextColor = ObsidianBlack,
-                    cursorColor = ObsidianBlack,
-                    focusedBorderColor = SoftBorderGrey,
-                    unfocusedBorderColor = HairlineBorder,
-                    focusedLabelColor = ObsidianBlack,
-                    unfocusedLabelColor = SlateGraphite,
-                    focusedContainerColor = FocusedBackground,
-                    unfocusedContainerColor = PaperCanvas
-                )
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Priority Selector
+            // 4. PRIORITY LEVEL SELECTOR (Low, Medium, High) with subtle monochrome indicators
             Text(
-                text = "PRIORITY",
+                text = "PRIORITY LEVEL",
                 style = MaterialTheme.typography.labelSmall,
                 color = SlateGraphite,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+                letterSpacing = 1.sp,
+                fontSize = 10.sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(PaperCanvas)
+                    .border(1.dp, HairlineBorder, RoundedCornerShape(12.dp))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 TaskPriority.entries.forEach { priority ->
-                    val isSelected = priority == selectedPriority
+                    val isSelected = selectedPriority == priority
+                    val animatedBg by animateColorAsState(
+                        targetValue = if (isSelected) priority.monochromeBackgroundColor else Color.Transparent,
+                        label = "priorityBg"
+                    )
+
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) ObsidianBlack else PaperCanvas)
-                            .border(
-                                1.dp,
-                                if (isSelected) ObsidianBlack else HairlineBorder,
-                                RoundedCornerShape(10.dp)
-                            )
-                            .clickable { selectedPriority = priority }
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(animatedBg)
+                            .clickable {
+                                HapticFeedbackHelper.performSelectionHaptic(view, haptic)
+                                selectedPriority = priority
+                            }
                             .padding(vertical = 8.dp)
-                            .testTag("priority_option_${priority.name.lowercase()}"),
+                            .testTag("priority_selector_${priority.name.lowercase()}"),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = priority.label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isSelected) PaperSurface else ObsidianBlack,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = priority.indicatorSymbol,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) {
+                                    if (priority == TaskPriority.HIGH) Color.White else priority.monochromeIndicatorColor
+                                } else priority.monochromeIndicatorColor,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = priority.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) {
+                                    if (priority == TaskPriority.HIGH) Color.White else ObsidianBlack
+                                } else SlateGraphite,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Color-Coded Category Selector
+            // 5. Category Selector with Custom Category Semantic Palette Creator
             Text(
                 text = "CATEGORY",
                 style = MaterialTheme.typography.labelSmall,
@@ -263,7 +368,9 @@ fun CreateTaskSheet(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp
             )
+
             Spacer(modifier = Modifier.height(8.dp))
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -271,307 +378,117 @@ fun CreateTaskSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                presetCategories.forEach { cat ->
-                    val isSelected = !isCustomCategorySelected && cat.equals(selectedCategory, ignoreCase = true)
-                    val style = CategoryTheme.getStyle(cat)
-
+                categories.forEach { category ->
+                    val isSelected = selectedCategory == category
+                    val style = CategoryTheme.getStyle(category)
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(20.dp))
                             .background(if (isSelected) ObsidianBlack else style.backgroundColor)
-                            .border(
-                                1.dp,
-                                if (isSelected) ObsidianBlack else style.borderColor,
-                                RoundedCornerShape(16.dp)
-                            )
+                            .border(1.dp, if (isSelected) ObsidianBlack else style.borderColor, RoundedCornerShape(20.dp))
                             .clickable {
-                                isCustomCategorySelected = false
-                                selectedCategory = cat
+                                HapticFeedbackHelper.performSelectionHaptic(view, haptic)
+                                selectedCategory = category
                             }
                             .padding(horizontal = 12.dp, vertical = 7.dp)
-                            .testTag("create_category_${cat.lowercase()}"),
+                            .testTag("create_category_chip_${category.lowercase()}"),
                         contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
                                     .size(7.dp)
                                     .clip(CircleShape)
-                                    .background(style.accentColor)
+                                    .background(if (isSelected) Color.White else style.accentColor)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = cat,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isSelected) PaperSurface else style.textColor,
+                                text = category,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) Color.White else style.textColor,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
                             )
                         }
                     }
                 }
 
-                // Custom category pill
-                val isCustomActive = isCustomCategorySelected
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isCustomActive) ObsidianBlack else PaperCanvas)
-                        .border(
-                            1.dp,
-                            if (isCustomActive) ObsidianBlack else HairlineBorder,
-                            RoundedCornerShape(16.dp)
-                        )
-                        .clickable { isCustomCategorySelected = true }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                        .testTag("create_category_custom"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Custom Category",
-                            tint = if (isCustomActive) PaperSurface else SlateGraphite,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isCustomActive && customCategoryText.isNotBlank()) customCategoryText.trim() else "Custom",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isCustomActive) PaperSurface else SlateGraphite,
-                            fontWeight = if (isCustomActive) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
-            // Input field for custom category if selected
-            AnimatedVisibility(visible = isCustomCategorySelected) {
-                Column(modifier = Modifier.padding(top = 10.dp)) {
-                    OutlinedTextField(
-                        value = customCategoryText,
-                        onValueChange = { customCategoryText = it },
-                        placeholder = { Text("Enter custom category name...", color = SlateGraphite) },
+                // + New Custom Category Chip
+                if (onAddCustomCategory != null) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("custom_category_sheet_input"),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(color = ObsidianBlack),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = ObsidianBlack,
-                            unfocusedTextColor = ObsidianBlack,
-                            cursorColor = ObsidianBlack,
-                            focusedBorderColor = SoftBorderGrey,
-                            unfocusedBorderColor = HairlineBorder,
-                            focusedContainerColor = FocusedBackground,
-                            unfocusedContainerColor = PaperCanvas
-                        )
-                    )
-                    if (customCategoryText.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Preview: ",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SlateGraphite
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            CategoryTag(category = customCategoryText.trim())
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Tags Selector / Builder
-            Text(
-                text = "TAGS",
-                style = MaterialTheme.typography.labelSmall,
-                color = SlateGraphite,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (tagsList.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    tagsList.forEachIndexed { index, tag ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(PaperCanvas)
-                                .border(1.dp, HairlineBorder, RoundedCornerShape(12.dp))
-                                .padding(start = 8.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
-                        ) {
-                            Text(
-                                text = if (tag.startsWith("#")) tag else "#$tag",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ObsidianBlack,
-                                fontSize = 11.sp
-                            )
-                            IconButton(
-                                onClick = { tagsList.removeAt(index) },
-                                modifier = Modifier.size(20.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Remove Tag",
-                                    tint = SlateGraphite,
-                                    modifier = Modifier.size(12.dp)
-                                )
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(PaperCanvas)
+                            .border(1.dp, HairlineBorder, RoundedCornerShape(20.dp))
+                            .clickable {
+                                HapticFeedbackHelper.performSelectionHaptic(view, haptic)
+                                showAddCategoryDialog = true
                             }
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = newTagText,
-                    onValueChange = { newTagText = it },
-                    placeholder = { Text("Add tag (e.g. #design, #sprint)...", color = SlateGraphite) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("task_tag_input"),
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(color = ObsidianBlack),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = ObsidianBlack,
-                        unfocusedTextColor = ObsidianBlack,
-                        cursorColor = ObsidianBlack,
-                        focusedBorderColor = SoftBorderGrey,
-                        unfocusedBorderColor = HairlineBorder,
-                        focusedContainerColor = FocusedBackground,
-                        unfocusedContainerColor = PaperCanvas
-                    )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        val clean = newTagText.trim()
-                        if (clean.isNotBlank() && !tagsList.contains(clean)) {
-                            tagsList.add(clean)
-                            newTagText = ""
-                        }
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(ObsidianBlack)
-                        .testTag("add_tag_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Tag",
-                        tint = PaperSurface,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Due Date Picker Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(PaperCanvas)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(12.dp))
-                    .clickable { datePickerDialog.show() }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarToday,
-                        contentDescription = "Pick Due Date",
-                        tint = ObsidianBlack,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = if (selectedDueDate != null) {
-                            val format = SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault())
-                            format.format(Date(selectedDueDate!!))
-                        } else "Add Due Date",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (selectedDueDate != null) ObsidianBlack else SlateGraphite,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                if (selectedDueDate != null) {
-                    IconButton(
-                        onClick = { selectedDueDate = null },
-                        modifier = Modifier.size(24.dp)
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                            .testTag("sheet_add_custom_category_chip"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Clear Due Date",
-                            tint = SlateGraphite,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add Custom Category",
+                                tint = RoyalBlue,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Custom",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = RoyalBlue,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Subtask builder
+            // 6. Subtasks Checklist
             Text(
-                text = "SUBTASKS / CHECKLIST",
+                text = "SUBTASKS (${subtasksList.size})",
                 style = MaterialTheme.typography.labelSmall,
                 color = SlateGraphite,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+                letterSpacing = 1.sp,
+                fontSize = 10.sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
 
-            // Subtask items already added
+            Spacer(modifier = Modifier.height(6.dp))
+
             subtasksList.forEachIndexed { index, subtask ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .border(1.5.dp, SlateGraphite, CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = subtask,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ObsidianBlack,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(SlateGraphite)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = subtask,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ObsidianBlack
+                        )
+                    }
                     IconButton(
-                        onClick = {
-                            HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
-                            subtasksList.removeAt(index)
-                        },
+                        onClick = { subtasksList.removeAt(index) },
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Remove Subtask",
+                            contentDescription = "Remove subtask",
                             tint = SlateGraphite,
                             modifier = Modifier.size(14.dp)
                         )
@@ -579,98 +496,265 @@ fun CreateTaskSheet(
                 }
             }
 
-            // Input to add a new subtask
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = newSubtaskText,
-                    onValueChange = { newSubtaskText = it },
-                    placeholder = { Text("Add subtask item...", color = SlateGraphite) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("modal_subtask_input"),
+                CompactFormTextField(
+                    value = newSubtaskInput,
+                    onValueChange = { newSubtaskInput = it },
+                    placeholder = "Add subtask item...",
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = ObsidianBlack),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = ObsidianBlack,
-                        unfocusedTextColor = ObsidianBlack,
-                        cursorColor = ObsidianBlack,
-                        focusedBorderColor = SoftBorderGrey,
-                        unfocusedBorderColor = HairlineBorder,
-                        focusedContainerColor = FocusedBackground,
-                        unfocusedContainerColor = PaperCanvas
-                    )
+                    imeAction = ImeAction.Done,
+                    onImeAction = {
+                        if (newSubtaskInput.isNotBlank()) {
+                            subtasksList.add(newSubtaskInput.trim())
+                            newSubtaskInput = ""
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
                 )
+
                 Spacer(modifier = Modifier.width(8.dp))
+
                 IconButton(
                     onClick = {
-                        if (newSubtaskText.isNotBlank()) {
-                            HapticFeedbackHelper.performSubtaskToggleHaptic(view, hapticFeedback)
-                            subtasksList.add(newSubtaskText.trim())
-                            newSubtaskText = ""
+                        if (newSubtaskInput.isNotBlank()) {
+                            subtasksList.add(newSubtaskInput.trim())
+                            newSubtaskInput = ""
                         }
                     },
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(ObsidianBlack)
-                        .testTag("modal_subtask_add_btn")
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (newSubtaskInput.isNotBlank()) RoyalBlue else PaperCanvas)
+                        .border(1.dp, if (newSubtaskInput.isNotBlank()) RoyalBlue else HairlineBorder, RoundedCornerShape(10.dp))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Add Subtask",
-                        tint = PaperSurface,
-                        modifier = Modifier.size(22.dp)
+                        contentDescription = "Add subtask",
+                        tint = if (newSubtaskInput.isNotBlank()) Color.White else SlateGraphite,
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Submit Button
+            // 7. Submit Button
             Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        HapticFeedbackHelper.performTaskCreationHaptic(view, hapticFeedback)
-                        val finalCategory = if (isCustomCategorySelected && customCategoryText.isNotBlank()) {
-                            customCategoryText.trim()
-                        } else {
-                            selectedCategory
-                        }
-                        onSaveTask(
-                            title,
-                            description,
-                            finalCategory,
-                            tagsList.toList(),
-                            selectedPriority,
-                            selectedDueDate,
-                            subtasksList.toList()
-                        )
-                        onDismiss()
-                    }
-                },
+                onClick = { submitTaskNow() },
                 enabled = title.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("save_task_button"),
-                shape = RoundedCornerShape(14.dp),
+                    .height(48.dp)
+                    .shadow(
+                        elevation = if (title.isNotBlank()) 5.dp else 0.dp,
+                        shape = RoundedCornerShape(24.dp),
+                        spotColor = RoyalBlue.copy(alpha = 0.35f)
+                    )
+                    .testTag("submit_create_task_btn"),
+                shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = RoyalBlue,
-                    contentColor = PaperSurface,
-                    disabledContainerColor = Color(0xFFD6D6D0),
-                    disabledContentColor = Color(0xFF8E8E8A)
+                    contentColor = Color.White,
+                    disabledContainerColor = Color(0xFFD4D4CE),
+                    disabledContentColor = Color.White
                 )
             ) {
-                Text(
-                    text = "Create Task",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Create",
+                        tint = Color.White,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Create Task",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
         }
     }
+
+    if (showAddCategoryDialog && onAddCustomCategory != null) {
+        val paletteOptions = listOf(
+            "#2563EB", // Royal Blue
+            "#16A34A", // Emerald
+            "#D97706", // Amber
+            "#DC2626", // Crimson
+            "#7C3AED", // Purple
+            "#0D9488", // Teal
+            "#E11D48", // Rose
+            "#374151"  // Charcoal
+        )
+        AlertDialog(
+            onDismissRequest = {
+                showAddCategoryDialog = false
+                newCategoryName = ""
+            },
+            title = {
+                Text(
+                    text = "Custom Category",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = ObsidianBlack
+                )
+            },
+            text = {
+                Column {
+                    CompactFormTextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it },
+                        placeholder = "e.g. College, Side Project, Fitness",
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Semantic Palette Accent Dot",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SlateGraphite,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        paletteOptions.forEach { hex ->
+                            val color = Color(android.graphics.Color.parseColor(hex))
+                            val isSelected = selectedCategoryColorHex == hex
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(
+                                        if (isSelected) 2.dp else 1.dp,
+                                        if (isSelected) ObsidianBlack else Color.Transparent,
+                                        CircleShape
+                                    )
+                                    .clickable { selectedCategoryColorHex = hex },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = newCategoryName.trim()
+                        if (clean.isNotBlank()) {
+                            onAddCustomCategory(clean, selectedCategoryColorHex)
+                            selectedCategory = clean
+                            newCategoryName = ""
+                            showAddCategoryDialog = false
+                        }
+                    },
+                    enabled = newCategoryName.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = ObsidianBlack),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Create & Select", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCategoryDialog = false }) {
+                    Text("Cancel", color = SlateGraphite)
+                }
+            },
+            containerColor = PaperSurface
+        )
+    }
 }
+
+/**
+ * Sleek, compact text input field designed for mobile density (42.dp single-line height,
+ * clean 10.dp vertical padding) to prevent oversized boxes in sheets, dialogs, and onboarding.
+ */
+@Composable
+fun CompactFormTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else 3,
+    fontWeight: FontWeight = FontWeight.Normal,
+    isError: Boolean = false,
+    imeAction: ImeAction = if (singleLine) ImeAction.Done else ImeAction.Default,
+    onImeAction: (() -> Unit)? = null
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val borderColor = when {
+        isError -> MaterialTheme.colorScheme.error
+        isFocused -> RoyalBlue
+        else -> HairlineBorder
+    }
+    val containerColor = if (isFocused) FocusedBackground else PaperCanvas
+
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
+        textStyle = MaterialTheme.typography.bodyMedium.copy(
+            color = ObsidianBlack,
+            fontWeight = fontWeight,
+            fontSize = 14.sp,
+            lineHeight = 19.sp
+        ),
+        cursorBrush = SolidColor(RoyalBlue),
+        keyboardOptions = KeyboardOptions(imeAction = imeAction),
+        keyboardActions = KeyboardActions(
+            onDone = { onImeAction?.invoke() },
+            onSend = { onImeAction?.invoke() },
+            onGo = { onImeAction?.invoke() }
+        ),
+        modifier = modifier
+            .onFocusChanged { isFocused = it.isFocused }
+            .clip(RoundedCornerShape(10.dp))
+            .background(containerColor)
+            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+            .padding(horizontal = 13.dp, vertical = 10.dp),
+        decorationBox = { innerTextField ->
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (value.isEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = SlateGraphite,
+                            fontSize = 13.5.sp
+                        )
+                    )
+                }
+                innerTextField()
+            }
+        }
+    )
+}
+

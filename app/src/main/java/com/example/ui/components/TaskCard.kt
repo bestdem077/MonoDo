@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -64,21 +65,39 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.SubTask
 import com.example.data.model.TaskEntity
 import com.example.data.model.TaskPriority
+import com.example.ui.theme.CategoryTheme
 import com.example.ui.theme.CompletedText
+import com.example.ui.theme.DateTileBackground
 import com.example.ui.theme.FocusedBackground
 import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.LightPill
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PaperCanvas
 import com.example.ui.theme.PaperSurface
+import com.example.ui.theme.RoyalBlue
+import com.example.ui.theme.RoyalBlueSoft
 import com.example.ui.theme.SlateGraphite
-import com.example.ui.theme.SoftBorderGrey
 import com.example.ui.util.HapticFeedbackHelper
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.Adjust
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TaskCard(
     task: TaskEntity,
@@ -88,12 +107,27 @@ fun TaskCard(
     onDeleteSubtask: (subtaskId: String) -> Unit,
     onDeleteTask: () -> Unit,
     modifier: Modifier = Modifier,
-    onCategoryClick: ((String) -> Unit)? = null
+    onCategoryClick: ((String) -> Unit)? = null,
+    onStartFocus: (() -> Unit)? = null,
+    onRescheduleTask: ((Long?) -> Unit)? = null
 ) {
     var isExpanded by remember { mutableStateOf(false) }
+    var isQuickActionsVisible by remember { mutableStateOf(false) }
     var newSubtaskText by remember { mutableStateOf("") }
     val view = LocalView.current
     val hapticFeedback = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val swipeOffsetX = remember(task.id) { Animatable(0f) }
+    var hasTriggeredThresholdHaptic by remember { mutableStateOf(false) }
+
+    val completeThresholdPx = with(density) { 96.dp.toPx() }
+    val actionRevealThresholdPx = with(density) { 72.dp.toPx() }
+    val maxRightSwipePx = with(density) { 160.dp.toPx() }
+    val maxLeftSwipePx = with(density) { if (onRescheduleTask != null) 216.dp.toPx() else 96.dp.toPx() }
+
+    val isSlidOpenLeft = swipeOffsetX.value <= -actionRevealThresholdPx * 0.5f
 
     val completedSubtasksCount = task.subtasks.count { it.isCompleted }
     val totalSubtasksCount = task.subtasks.size
@@ -108,25 +142,278 @@ fun TaskCard(
     )
 
     val cardBorderColor by animateColorAsState(
-        targetValue = if (task.isCompleted) HairlineBorder else Color(0xFFDCDCD7),
+        targetValue = when {
+            isQuickActionsVisible || isSlidOpenLeft -> RoyalBlue
+            task.isCompleted -> HairlineBorder
+            else -> Color(0xFFDCDCD7)
+        },
         label = "cardBorder"
     )
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(PaperSurface)
-            .border(1.dp, cardBorderColor, RoundedCornerShape(16.dp))
-            .padding(16.dp)
-            .testTag("task_card_${task.id}")
     ) {
+        // Background Layer: Revealed during Horizontal Swipe (Right = Complete, Left = Inline Actions)
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    when {
+                        swipeOffsetX.value > 0f -> Color(0xFFEFF6FF)
+                        swipeOffsetX.value < 0f -> Color(0xFFF3F4F6)
+                        else -> Color.Transparent
+                    }
+                )
+                .border(
+                    width = 1.dp,
+                    color = when {
+                        swipeOffsetX.value >= completeThresholdPx -> RoyalBlue
+                        swipeOffsetX.value < 0f -> HairlineBorder
+                        else -> Color.Transparent
+                    },
+                    shape = RoundedCornerShape(16.dp)
+                )
+        ) {
+            if (swipeOffsetX.value > 0f) {
+                val progressScale = (swipeOffsetX.value / completeThresholdPx).coerceIn(0.75f, 1.15f)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .scale(progressScale)
+                            .clip(CircleShape)
+                            .background(if (swipeOffsetX.value >= completeThresholdPx) RoyalBlue else Color.White)
+                            .border(1.5.dp, RoyalBlue, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Complete Task",
+                            tint = if (swipeOffsetX.value >= completeThresholdPx) Color.White else RoyalBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Text(
+                        text = if (task.isCompleted) "Reopen" else "Complete",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = RoyalBlue,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else if (swipeOffsetX.value < 0f) {
+                // Inline Action Buttons Revealed Behind the Slid Card
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 10.dp)
+                        .testTag("swipe_inline_actions_${task.id}"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (onRescheduleTask != null) {
+                        // Today Inline Action Button
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(PaperSurface)
+                                .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp))
+                                .clickable {
+                                    HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                                    val todayEnd = QuickDateCalculator.getDeadlineTimestamp(QuickDeadlinePreset.TODAY)
+                                    onRescheduleTask(todayEnd)
+                                    coroutineScope.launch {
+                                        swipeOffsetX.animateTo(0f, spring())
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .testTag("inline_swipe_action_today_${task.id}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Today",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ObsidianBlack,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // Tomorrow Inline Action Button
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(PaperSurface)
+                                .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp))
+                                .clickable {
+                                    HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                                    val tomorrowEnd = QuickDateCalculator.getDeadlineTimestamp(QuickDeadlinePreset.TOMORROW)
+                                    onRescheduleTask(tomorrowEnd)
+                                    coroutineScope.launch {
+                                        swipeOffsetX.animateTo(0f, spring())
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .testTag("inline_swipe_action_tomorrow_${task.id}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Tomorrow",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ObsidianBlack,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // Delete Inline Action Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFDC2626))
+                            .clickable {
+                                HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
+                                coroutineScope.launch {
+                                    swipeOffsetX.snapTo(0f)
+                                }
+                                onDeleteTask()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                            .testTag("inline_swipe_action_delete_${task.id}"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Delete Task",
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Delete",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Foreground Slidable Task Card with Modifier.pointerInput
+        Column(
+            modifier = Modifier
+                .offset { IntOffset(swipeOffsetX.value.roundToInt(), 0) }
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(PaperSurface)
+                .border(1.dp, cardBorderColor, RoundedCornerShape(16.dp))
+                .pointerInput(task.id, task.isCompleted) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            hasTriggeredThresholdHaptic = false
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            val nextOffset = (swipeOffsetX.value + dragAmount)
+                                .coerceIn(-maxLeftSwipePx, maxRightSwipePx)
+                            val crossedRight = nextOffset >= completeThresholdPx &&
+                                    swipeOffsetX.value < completeThresholdPx
+                            val crossedLeft = nextOffset <= -actionRevealThresholdPx &&
+                                    swipeOffsetX.value > -actionRevealThresholdPx
+                            if ((crossedRight || crossedLeft) && !hasTriggeredThresholdHaptic) {
+                                hasTriggeredThresholdHaptic = true
+                                HapticFeedbackHelper.performSwipeActionHaptic(view, hapticFeedback)
+                            } else if (abs(nextOffset) < minOf(completeThresholdPx, actionRevealThresholdPx) * 0.7f) {
+                                hasTriggeredThresholdHaptic = false
+                            }
+                            coroutineScope.launch {
+                                swipeOffsetX.snapTo(nextOffset)
+                            }
+                        },
+                        onDragEnd = {
+                            coroutineScope.launch {
+                                when {
+                                    swipeOffsetX.value >= completeThresholdPx -> {
+                                        HapticFeedbackHelper.performTaskCompletionHaptic(view, hapticFeedback)
+                                        onToggleCompletion()
+                                        swipeOffsetX.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        )
+                                    }
+                                    swipeOffsetX.value <= -actionRevealThresholdPx -> {
+                                        swipeOffsetX.animateTo(
+                                            targetValue = -maxLeftSwipePx,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        )
+                                    }
+                                    else -> {
+                                        swipeOffsetX.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            coroutineScope.launch {
+                                swipeOffsetX.animateTo(0f, spring())
+                            }
+                        }
+                    )
+                }
+                .combinedClickable(
+                    onClick = {
+                        if (swipeOffsetX.value < -10f) {
+                            coroutineScope.launch {
+                                swipeOffsetX.animateTo(0f, spring())
+                            }
+                        } else {
+                            isExpanded = !isExpanded
+                        }
+                    },
+                    onLongClick = {
+                        if (onStartFocus != null && !task.isCompleted) {
+                            HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                            onStartFocus()
+                        } else {
+                            HapticFeedbackHelper.performSwipeActionHaptic(view, hapticFeedback)
+                            isQuickActionsVisible = !isQuickActionsVisible
+                        }
+                    }
+                )
+                .padding(16.dp)
+                .testTag("task_card_${task.id}")
+        ) {
         // Main task row
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top
         ) {
-            // Spring animated checkbox with tactile haptic confirmation
+            // Checkbox
             MonochromeCheckbox(
                 checked = task.isCompleted,
                 onCheckedChange = {
@@ -136,26 +423,29 @@ fun TaskCard(
                 modifier = Modifier.testTag("task_checkbox_${task.id}")
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
+            // Subtle monochrome priority indicator bar (dots) next to task item
+            SubtleMonochromeLevelIndicator(
+                priority = task.priority,
+                isCompleted = task.isCompleted,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Title, description and details
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { isExpanded = !isExpanded }
             ) {
-                // Task Title with animated strikethrough & color change
-                val titleColor by animateColorAsState(
-                    targetValue = if (task.isCompleted) CompletedText else ObsidianBlack,
-                    animationSpec = spring(),
-                    label = "titleColor"
-                )
-
                 Text(
                     text = task.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = titleColor,
-                    fontWeight = if (task.isCompleted) FontWeight.Normal else FontWeight.SemiBold,
-                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = if (task.isCompleted) FontWeight.Normal else FontWeight.SemiBold,
+                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                    ),
+                    color = if (task.isCompleted) CompletedText else ObsidianBlack,
                     maxLines = if (isExpanded) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -166,103 +456,160 @@ fun TaskCard(
                         text = task.description,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (task.isCompleted) CompletedText else SlateGraphite,
-                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
                         maxLines = if (isExpanded) Int.MAX_VALUE else 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Metadata Badges (Priority, Category, Due Date)
+                // Metadata row: Category pill, Monochrome Priority Badge, Due Date, Subtask Count
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Priority Pill
-                    PriorityBadge(priority = task.priority)
+                    // Category pill
+                    val style = CategoryTheme.getStyle(task.category)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(style.backgroundColor)
+                            .border(1.dp, style.borderColor, RoundedCornerShape(6.dp))
+                            .clickable(enabled = onCategoryClick != null) {
+                                onCategoryClick?.invoke(task.category)
+                            }
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = task.category,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = style.textColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
+                    }
 
-                    // Color-Coded Category Tag
-                    CategoryTag(
-                        category = task.category,
-                        onClick = onCategoryClick?.let { { it(task.category) } }
+                    // Subtle Monochrome Priority Badge
+                    MonochromePriorityBadge(
+                        priority = task.priority,
+                        isCompleted = task.isCompleted
                     )
 
-                    // Tags Pills
-                    task.tags.take(2).forEach { tag ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(PaperCanvas)
-                                .border(1.dp, HairlineBorder, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
+                    // Due Date if present
+                    if (task.dueDate != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarToday,
+                                contentDescription = "Due Date",
+                                tint = if (task.isCompleted) CompletedText else SlateGraphite,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
                             Text(
-                                text = if (tag.startsWith("#")) tag else "#$tag",
+                                text = sdf.format(Date(task.dueDate)),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = SlateGraphite,
-                                fontWeight = FontWeight.Medium,
+                                color = if (task.isCompleted) CompletedText else SlateGraphite,
                                 fontSize = 10.sp
                             )
                         }
                     }
 
-                    // Due Date if present
-                    if (task.dueDate != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                    // Subtask counter pill if subtasks exist
+                    if (totalSubtasksCount > 0) {
+                        Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(PaperCanvas)
-                                .border(1.dp, HairlineBorder, RoundedCornerShape(6.dp))
+                                .background(DateTileBackground)
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CalendarToday,
-                                contentDescription = "Due Date",
-                                tint = SlateGraphite,
-                                modifier = Modifier.size(10.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = formatDueDate(task.dueDate),
+                                text = "$completedSubtasksCount/$totalSubtasksCount",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = SlateGraphite,
-                                fontSize = 10.sp
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
                 }
             }
 
-            // Quick actions (expand or delete)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (totalSubtasksCount > 0) {
-                    IconButton(
-                        onClick = { isExpanded = !isExpanded },
-                        modifier = Modifier.size(32.dp)
+            // Expand / Collapse Chevron, Focus & Quick Actions
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                if (onStartFocus != null && !task.isCompleted) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(RoyalBlueSoft)
+                            .border(1.dp, Color(0xFFBFDBFE), RoundedCornerShape(999.dp))
+                            .clickable {
+                                HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                                onStartFocus()
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("task_focus_button_${task.id}"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Expand Subtasks",
-                            tint = SlateGraphite,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Adjust,
+                                contentDescription = "Zen Focus Mode",
+                                tint = RoyalBlue,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Focus",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = RoyalBlue,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                        }
                     }
                 }
+
                 IconButton(
                     onClick = {
-                        HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
-                        onDeleteTask()
+                        HapticFeedbackHelper.performSwipeActionHaptic(view, hapticFeedback)
+                        coroutineScope.launch {
+                            if (swipeOffsetX.value < -10f) {
+                                swipeOffsetX.animateTo(0f, spring())
+                            } else {
+                                swipeOffsetX.animateTo(
+                                    targetValue = -maxLeftSwipePx,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                )
+                            }
+                        }
                     },
                     modifier = Modifier
-                        .size(32.dp)
-                        .testTag("delete_task_${task.id}")
+                        .size(30.dp)
+                        .testTag("task_quick_actions_toggle_${task.id}")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete Task",
+                        imageVector = Icons.Default.MoreHoriz,
+                        contentDescription = "Quick Actions",
+                        tint = if (isSlidOpenLeft || isQuickActionsVisible) RoyalBlue else SlateGraphite,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = { isExpanded = !isExpanded },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Expand Task Details",
                         tint = SlateGraphite,
                         modifier = Modifier.size(18.dp)
                     )
@@ -270,123 +617,238 @@ fun TaskCard(
             }
         }
 
-        // Subtasks Progress Bar (always visible if subtasks exist)
-        if (totalSubtasksCount > 0) {
-            Spacer(modifier = Modifier.height(10.dp))
+        // Right-to-Left Swipe / Quick Actions Bar: Today, Tomorrow, Delete
+        AnimatedVisibility(
+            visible = isQuickActionsVisible,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(PaperCanvas)
+                    .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .testTag("task_quick_actions_bar_${task.id}"),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                LinearProgressIndicator(
-                    progress = { animatedProgress },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = ObsidianBlack,
-                    trackColor = HairlineBorder,
-                    strokeCap = StrokeCap.Round
-                )
-                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "$completedSubtasksCount/$totalSubtasksCount subtasks",
+                    text = "QUICK ACTIONS",
                     style = MaterialTheme.typography.labelSmall,
                     color = SlateGraphite,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.sp,
+                    letterSpacing = 0.8.sp
                 )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (onRescheduleTask != null) {
+                        // Today Pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(PaperSurface)
+                                .border(1.dp, HairlineBorder, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                                    val todayEnd = Calendar.getInstance().apply {
+                                        set(Calendar.HOUR_OF_DAY, 23)
+                                        set(Calendar.MINUTE, 59)
+                                        set(Calendar.SECOND, 59)
+                                    }.timeInMillis
+                                    onRescheduleTask(todayEnd)
+                                    isQuickActionsVisible = false
+                                }
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                                .testTag("quick_action_today_${task.id}")
+                        ) {
+                            Text(
+                                text = "Today",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ObsidianBlack,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // Tomorrow Pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(PaperSurface)
+                                .border(1.dp, HairlineBorder, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    HapticFeedbackHelper.performSelectionHaptic(view, hapticFeedback)
+                                    val tomorrowEnd = Calendar.getInstance().apply {
+                                        add(Calendar.DAY_OF_YEAR, 1)
+                                        set(Calendar.HOUR_OF_DAY, 23)
+                                        set(Calendar.MINUTE, 59)
+                                        set(Calendar.SECOND, 59)
+                                    }.timeInMillis
+                                    onRescheduleTask(tomorrowEnd)
+                                    isQuickActionsVisible = false
+                                }
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                                .testTag("quick_action_tomorrow_${task.id}")
+                        ) {
+                            Text(
+                                text = "Tomorrow",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ObsidianBlack,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // Delete Pill
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFEF2F2))
+                            .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                            .clickable {
+                                HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
+                                isQuickActionsVisible = false
+                                onDeleteTask()
+                            }
+                            .padding(horizontal = 9.dp, vertical = 5.dp)
+                            .testTag("quick_action_delete_${task.id}")
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Delete",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Delete",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFDC2626),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        // Expandable Subtasks List & Inline Subtask Creator
+        // Subtasks Progress Bar (visible if subtasks present)
+        if (totalSubtasksCount > 0) {
+            Spacer(modifier = Modifier.height(10.dp))
+            LinearProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(1.5.dp)),
+                color = if (task.isCompleted) CompletedText else RoyalBlue,
+                trackColor = Color(0xFFF0EFEA),
+                strokeCap = StrokeCap.Round
+            )
+        }
+
+        // Expanded Subtasks checklist & quick-add
         AnimatedVisibility(
             visible = isExpanded,
-            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp, start = 4.dp)
+                    .padding(top = 14.dp)
             ) {
-                // Divider line
+                // Divider
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(1.dp)
                         .background(HairlineBorder)
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "SUBTASKS (${completedSubtasksCount}/${totalSubtasksCount})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SlateGraphite,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    fontSize = 10.sp
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Subtask Items
+                // List of subtasks
                 task.subtasks.forEach { subtask ->
                     SubtaskItemRow(
                         subtask = subtask,
-                        onToggle = { onToggleSubtask(subtask.id) },
-                        onDelete = { onDeleteSubtask(subtask.id) }
+                        onToggle = {
+                            HapticFeedbackHelper.performSubtaskToggleHaptic(view, hapticFeedback)
+                            onToggleSubtask(subtask.id)
+                        },
+                        onDelete = {
+                            HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
+                            onDeleteSubtask(subtask.id)
+                        }
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Inline Subtask Add input
+                // Add subtask input field
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedTextField(
+                    CompactFormTextField(
                         value = newSubtaskText,
                         onValueChange = { newSubtaskText = it },
-                        placeholder = {
-                            Text(
-                                "Add a subtask...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = SlateGraphite
-                            )
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("new_subtask_input_${task.id}"),
+                        placeholder = "Add subtask...",
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(color = ObsidianBlack),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = ObsidianBlack,
-                            unfocusedTextColor = ObsidianBlack,
-                            cursorColor = ObsidianBlack,
-                            focusedBorderColor = SoftBorderGrey,
-                            unfocusedBorderColor = HairlineBorder,
-                            focusedContainerColor = FocusedBackground,
-                            unfocusedContainerColor = PaperCanvas
-                        ),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = {
+                        imeAction = ImeAction.Done,
+                        onImeAction = {
                             if (newSubtaskText.isNotBlank()) {
-                                onAddSubtask(newSubtaskText)
+                                HapticFeedbackHelper.performTaskCreationHaptic(view, hapticFeedback)
+                                onAddSubtask(newSubtaskText.trim())
                                 newSubtaskText = ""
                             }
-                        })
+                        },
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     IconButton(
                         onClick = {
                             if (newSubtaskText.isNotBlank()) {
-                                onAddSubtask(newSubtaskText)
+                                HapticFeedbackHelper.performTaskCreationHaptic(view, hapticFeedback)
+                                onAddSubtask(newSubtaskText.trim())
                                 newSubtaskText = ""
                             }
                         },
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(ObsidianBlack)
-                            .testTag("add_subtask_btn_${task.id}")
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (newSubtaskText.isNotBlank()) RoyalBlue else PaperCanvas)
+                            .border(1.dp, if (newSubtaskText.isNotBlank()) RoyalBlue else HairlineBorder, RoundedCornerShape(10.dp))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Add Subtask",
-                            tint = PaperSurface,
-                            modifier = Modifier.size(18.dp)
+                            tint = if (newSubtaskText.isNotBlank()) Color.White else SlateGraphite,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -394,138 +856,66 @@ fun TaskCard(
         }
     }
 }
+}
 
+/**
+ * Subtle Monochrome Indicator next to the task item:
+ * - Low: 1 subtle dot (–)
+ * - Medium: 2 subtle dots (••)
+ * - High: 3 bold obsidian dots (•••)
+ */
 @Composable
-fun MonochromeCheckbox(
-    checked: Boolean,
-    onCheckedChange: () -> Unit,
+fun SubtleMonochromeLevelIndicator(
+    priority: TaskPriority,
+    isCompleted: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (checked) 1f else 0.95f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "checkScale"
-    )
+    val baseColor = if (isCompleted) CompletedText else priority.monochromeIndicatorColor
 
-    val bgColor by animateColorAsState(
-        targetValue = if (checked) ObsidianBlack else Color.Transparent,
-        animationSpec = spring(),
-        label = "checkBg"
-    )
-
-    val borderColor = if (checked) ObsidianBlack else Color(0xFF404040)
-
-    Box(
-        modifier = modifier
-            .size(24.dp)
-            .scale(scale)
-            .clip(RoundedCornerShape(7.dp))
-            .background(bgColor)
-            .border(2.dp, borderColor, RoundedCornerShape(7.dp))
-            .clickable { onCheckedChange() },
-        contentAlignment = Alignment.Center
+    Column(
+        modifier = modifier.width(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.5.dp)
     ) {
-        if (checked) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = "Checked",
-                tint = PaperSurface,
-                modifier = Modifier.size(16.dp)
+        repeat(priority.level) {
+            Box(
+                modifier = Modifier
+                    .size(if (priority == TaskPriority.HIGH) 4.5.dp else 4.dp)
+                    .clip(CircleShape)
+                    .background(baseColor)
             )
         }
     }
 }
 
+/**
+ * Subtle Monochrome Priority Badge with outline and clean typography
+ */
 @Composable
-private fun SubtaskItemRow(
-    subtask: SubTask,
-    onToggle: () -> Unit,
-    onDelete: () -> Unit
+fun MonochromePriorityBadge(
+    priority: TaskPriority,
+    isCompleted: Boolean,
+    modifier: Modifier = Modifier
 ) {
-    val view = LocalView.current
-    val hapticFeedback = LocalHapticFeedback.current
+    val bg = if (isCompleted) DateTileBackground else priority.monochromeBackgroundColor
+    val textColor = if (isCompleted) CompletedText else priority.monochromeTextColor
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Mini checkbox
-        Box(
-            modifier = Modifier
-                .size(18.dp)
-                .clip(RoundedCornerShape(5.dp))
-                .background(if (subtask.isCompleted) ObsidianBlack else Color.Transparent)
-                .border(
-                    1.5.dp,
-                    if (subtask.isCompleted) ObsidianBlack else SlateGraphite,
-                    RoundedCornerShape(5.dp)
-                )
-                .clickable {
-                    HapticFeedbackHelper.performSubtaskToggleHaptic(view, hapticFeedback)
-                    onToggle()
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            if (subtask.isCompleted) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Subtask Completed",
-                    tint = PaperSurface,
-                    modifier = Modifier.size(12.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Text(
-            text = subtask.title,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (subtask.isCompleted) CompletedText else ObsidianBlack,
-            textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-            modifier = Modifier
-                .weight(1f)
-                .clickable {
-                    HapticFeedbackHelper.performSubtaskToggleHaptic(view, hapticFeedback)
-                    onToggle()
-                }
-        )
-
-        IconButton(
-            onClick = {
-                HapticFeedbackHelper.performDeleteHaptic(view, hapticFeedback)
-                onDelete()
-            },
-            modifier = Modifier.size(24.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Delete Subtask",
-                tint = SlateGraphite,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun PriorityBadge(priority: TaskPriority) {
-    val (bgColor, textColor, border) = when (priority) {
-        TaskPriority.URGENT -> Triple(ObsidianBlack, PaperSurface, null)
-        TaskPriority.HIGH -> Triple(PaperSurface, ObsidianBlack, HairlineBorder)
-        TaskPriority.MEDIUM -> Triple(LightPill, ObsidianBlack, null)
-        TaskPriority.LOW -> Triple(PaperCanvas, SlateGraphite, HairlineBorder)
-    }
-
-    Box(
-        modifier = Modifier
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(bgColor)
-            .then(if (border != null) Modifier.border(1.dp, border, RoundedCornerShape(6.dp)) else Modifier)
+            .background(bg)
+            .border(1.dp, HairlineBorder, RoundedCornerShape(6.dp))
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
+        Text(
+            text = priority.indicatorSymbol,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isCompleted) CompletedText else priority.monochromeIndicatorColor,
+            fontWeight = FontWeight.Black,
+            fontSize = 9.sp
+        )
+        Spacer(modifier = Modifier.width(3.dp))
         Text(
             text = priority.label.uppercase(),
             style = MaterialTheme.typography.labelSmall,
@@ -537,21 +927,101 @@ fun PriorityBadge(priority: TaskPriority) {
     }
 }
 
-private fun formatDueDate(timeMillis: Long): String {
-    val cal = Calendar.getInstance().apply { timeInMillis = timeMillis }
-    val today = Calendar.getInstance()
-    val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
+@Composable
+fun MonochromeCheckbox(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val animatedBg by animateColorAsState(
+        targetValue = if (checked) ObsidianBlack else PaperSurface,
+        label = "checkboxBg"
+    )
+    val animatedBorder by animateColorAsState(
+        targetValue = if (checked) ObsidianBlack else Color(0xFFC0C0BA),
+        label = "checkboxBorder"
+    )
 
-    return when {
-        cal.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
-                cal.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR) -> "Today"
+    Box(
+        modifier = modifier
+            .size(24.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(animatedBg)
+            .border(1.5.dp, animatedBorder, RoundedCornerShape(7.dp))
+            .clickable { onCheckedChange(!checked) },
+        contentAlignment = Alignment.Center
+    ) {
+        if (checked) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = "Completed",
+                tint = Color.White,
+                modifier = Modifier.size(15.dp)
+            )
+        }
+    }
+}
 
-        cal.get(Calendar.YEAR) == tomorrow.get(Calendar.YEAR) &&
-                cal.get(Calendar.DAY_OF_YEAR) == tomorrow.get(Calendar.DAY_OF_YEAR) -> "Tomorrow"
+@Composable
+private fun SubtaskItemRow(
+    subtask: SubTask,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(PaperCanvas)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onToggle() }
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(if (subtask.isCompleted) ObsidianBlack else PaperSurface)
+                    .border(1.dp, if (subtask.isCompleted) ObsidianBlack else Color(0xFFC0C0BA), RoundedCornerShape(5.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (subtask.isCompleted) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Done",
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
 
-        else -> {
-            val format = SimpleDateFormat("MMM d", Locale.getDefault())
-            format.format(Date(timeMillis))
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Text(
+                text = subtask.title,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                ),
+                color = if (subtask.isCompleted) CompletedText else ObsidianBlack
+            )
+        }
+
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(24.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Remove subtask",
+                tint = SlateGraphite,
+                modifier = Modifier.size(14.dp)
+            )
         }
     }
 }

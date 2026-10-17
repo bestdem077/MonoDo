@@ -22,7 +22,7 @@ class ReminderPreferences(context: Context) {
     fun getSettings(): ReminderSettings {
         return ReminderSettings(
             isEnabled = prefs.getBoolean(KEY_ENABLED, false),
-            hour = prefs.getInt(KEY_HOUR, 9), // Default 9:00 AM
+            hour = prefs.getInt(KEY_HOUR, 9),
             minute = prefs.getInt(KEY_MINUTE, 0)
         )
     }

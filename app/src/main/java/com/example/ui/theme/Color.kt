@@ -2,35 +2,31 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Paper Minimalist Monochrome Palette
-val PaperCanvas = Color(0xFFFAF9F6)          // Warm, clean paper background
-val PaperSurface = Color(0xFFFFFFFF)         // Pure card surface
-val PaperSurfaceVariant = Color(0xFFF2F1ED)  // Elevated / secondary surface
-val ObsidianBlack = Color(0xFF111111)        // Primary high-contrast typography & active buttons
-val CharcoalDark = Color(0xFF1E1E1E)         // Deep charcoal for strong badges
-val SlateGraphite = Color(0xFF6B6B6B)        // Metadata, captions, secondary labels
-val HairlineBorder = Color(0xFFE5E5DF)       // Subtle card divider and card border
-val HairlineBorderDark = Color(0xFF2A2A2A)   // Focused or dark border
-val SoftBorderGrey = Color(0xFFC0C0B8)       // Gentle, soft grey border for focused inputs
-val FocusedBackground = Color(0xFFF3F2EE)    // Subtle tint when input is focused
-val DateTileBackground = Color(0xFFF7F6F2)   // Clean tinted background for weekly calendar tiles
-val DateTileBorder = Color(0xFFDFDFD8)       // Distinct visible border for calendar tiles
-val LightPill = Color(0xFFEBEBE6)            // Filter tag background
-val SubtleFill = Color(0xFFF6F5F2)           // Text field and item backgrounds
-val CompletedText = Color(0xFFA0A09B)        // Strikethrough/completed text tone
-val AccentDot = Color(0xFF000000)            // Pure black accent
+// Swiss paper minimalist monochrome palette
+val PaperCanvas = Color(0xFFFAF9F6)
+val PaperSurface = Color(0xFFFFFFFF)
+val PaperSurfaceVariant = Color(0xFFF2F1ED)
+val ObsidianBlack = Color(0xFF111111)
+val CharcoalDark = Color(0xFF1E1E1E)
+val SlateGraphite = Color(0xFF6B6B6B)
+val HairlineBorder = Color(0xFFE5E5DF)
+val SoftBorderGrey = Color(0xFFDCDCD7)
+val FocusedBackground = Color(0xFFF5F5F0)
+val DateTileBackground = Color(0xFFF4F3EF)
+val CompletedText = Color(0xFF9E9E9E)
+val LightPill = Color(0xFFF0EFEA)
 
-// Modern Royal Blue Accent (Curated highlight color requested by user)
-val RoyalBlue = Color(0xFF2563EB)              // Primary vivid royal blue
-val RoyalBlueHover = Color(0xFF1D4ED8)         // Darker royal blue for pressed state
-val RoyalBlueSoft = Color(0xFFEFF6FF)          // Very soft royal blue background tint
-val RoyalBlueBorder = Color(0xFFBFDBFE)        // Subtle blue border outline
-val RoyalBlueMuted = Color(0xFF3B82F6)         // Medium vibrant blue highlight
+// Primary Curated Accent: Royal Blue (as specified in AGENTS.md)
+val RoyalBlue = Color(0xFF2563EB)
+val RoyalBlueHover = Color(0xFF1D4ED8)
+val RoyalBlueSoft = Color(0xFFEFF6FF)
+val RoyalBlueBorder = Color(0xFFBFDBFE)
+val RoyalBlueMuted = Color(0xFF3B82F6)
 
-// Dark mode monochrome equivalents
-val DarkCanvas = Color(0xFF0E0E0E)
-val DarkSurface = Color(0xFF181818)
-val DarkSurfaceVariant = Color(0xFF222222)
-val WhiteText = Color(0xFFF5F5F5)
-val DarkMuted = Color(0xFF9E9E9E)
-val DarkBorder = Color(0xFF2E2E2E)
+// Priority Monochrome Tokens (for subtle monochrome indicators next to tasks)
+val PriorityLowIcon = Color(0xFF9CA3AF)        // Subtle cool gray
+val PriorityLowBackground = Color(0xFFF3F4F6)  // Very soft gray tint
+val PriorityMediumIcon = Color(0xFF4B5563)     // Balanced charcoal gray
+val PriorityMediumBackground = Color(0xFFE5E7EB)
+val PriorityHighIcon = Color(0xFF111111)       // High contrast obsidian black
+val PriorityHighBackground = Color(0xFF1F2937) // Deep solid dark

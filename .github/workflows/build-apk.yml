@@ -78,7 +78,7 @@ jobs:
           echo "=== 2. Setting up dummy google-services.json ==="
           if [ ! -f app/google-services.json ]; then
             mkdir -p app
-            echo '{"project_info":{"project_number":"123456789","project_id":"monodo-app","storage_bucket":"monodo-app.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789:android:abcdef","android_client_info":{"package_name":"com.aistudio.monodo.kxmpzq"}},"oauth_client":[],"api_key":[{"current_key":"AIzaSyDummyKey"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}]}' > app/google-services.json
+            echo '{"project_info":{"project_number":"123456789","project_id":"monodo-app","storage_bucket":"monodo-app.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:123456789:android:abcdef","android_client_info":{"package_name":"com.aistudio.monodo.prod"}},"oauth_client":[],"api_key":[{"current_key":"AIzaSyDummyKey"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}},{"client_info":{"mobilesdk_app_id":"1:123456789:android:abcdef2","android_client_info":{"package_name":"com.aistudio.monodo.kxmpzq"}},"oauth_client":[],"api_key":[{"current_key":"AIzaSyDummyKey"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}]}' > app/google-services.json
           fi
 
           echo "=== 3. Setting up .env configuration ==="
@@ -116,8 +116,8 @@ jobs:
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
 
           # Extract base version from app/build.gradle.kts
-          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "1.1.0")
-          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "2")
+          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "2.0.0")
+          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "3")
 
           # Dynamic Version Resolution
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
@@ -128,6 +128,7 @@ jobs:
 
           echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
           echo "BASE_VERSION=${BASE_VERSION}" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=${VERSION_CODE}" >> $GITHUB_OUTPUT
           echo "BUILD_NUM=${BUILD_NUM}" >> $GITHUB_OUTPUT
           echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_OUTPUT
@@ -165,10 +166,10 @@ jobs:
           CUSTOM_NOTES="${{ github.event.inputs.release_notes || 'Automated production build generated via GitHub Actions.' }}"
 
           cat << 'EOF' > RELEASE_BODY.md
-          ## 🖤 MonoDo — Minimalist Task Manager
+          ## 🖤 MonoDo — Minimalist Task & Focus Workspace
 
           > **Crafted with focus & elegance by Vishal Dhangar**  
-          > A distraction-free, 100% offline personal task manager with habit streaks and subtask tracking.
+          > A distraction-free, 100% offline personal task manager, habit tracker, and focus workspace with Swiss paper minimalism and Royal Blue accents.
 
           ---
 
@@ -176,7 +177,7 @@ jobs:
 
           | Specification | Details |
           |---|---|
-          | **Release Version** | `${{ steps.prepare_files.outputs.VERSION_TAG }}` |
+          | **Release Version** | `${{ steps.prepare_files.outputs.VERSION_TAG }}` (Base `v${{ steps.prepare_files.outputs.BASE_VERSION }}`, Code `${{ steps.prepare_files.outputs.VERSION_CODE }}`) |
           | **Build Run** | `#${{ steps.prepare_files.outputs.BUILD_NUM }}` |
           | **Commit Reference** | `${{ steps.prepare_files.outputs.SHORT_SHA }}` (`${{ github.sha }}`) |
           | **Package Size** | `${{ steps.prepare_files.outputs.APK_SIZE }}` |
@@ -187,16 +188,17 @@ jobs:
 
           ---
 
-          ### 🌟 Key Features in this Release (v1.1.0)
+          ### 🌟 Key Features in this Major Release (v2.0.0)
           
-          * **🖤 Minimalist Monochrome UI with Royal Blue Accents:** Refined Swiss design aesthetic with vibrant Royal Blue highlights on active tabs, center FAB, streak badges, and action controls.
-          * **📝 Local Notes Workspace:** Complete Room-backed notes manager with title/content search, custom categories, and pinning.
-          * **📴 100% Offline, Clean & Private:** Production-ready zero dummy data. All tasks, notes, checklists, and streak counters are stored locally on your device in Android Room Database (SQLite).
-          * **📳 Tactile Haptic Engine:** Satisfying mechanical vibrations on task completion, subtask ticks, creation, and deletion.
-          * **🔥 Streak & Habit Tracking:** Tracks continuous productive days with a weekly activity matrix.
-          * **✅ Subtask Checklists:** Break large objectives into bite-sized items with animated progress meters.
-          * **⏰ Local Accountability Reminders:** Lightweight local notifications without battery drain.
-          * **🛡️ One-Time Setup Guarantee:** Persistent onboarding that saves your profile once and never interrupts your workflow.
+          * **👆 Smooth Horizontal Swipe Gestures (`pointerInput`) with Haptics:** Swipe left-to-right on any task card to complete/reopen with a crisp haptic tick; swipe right-to-left to smoothly slide the card and reveal inline **Today**, **Tomorrow**, and **Delete** quick actions.
+          * **⚡ 1-Tap Quick Deadline Chips & Inline Quick-Add Bar:** Instant **`Today`**, **`Tomorrow`**, **`This Weekend`**, and **`Next Week`** chips directly below the task input field in both the Create Task sheet and the new inline Quick-Add bar on the Tasks screen.
+          * **🔵 Minimalist 7-Day Habit Dot Matrix Tracker:** Collapsible daily habit tracker with interactive 7-day completion dots and 1-tap starter habits (`Read 20m`, `Deep Work 2h`, `Gym`).
+          * **🧘 Zen Focus Mode (Single-Task Fullscreen Canvas):** Long-press any task or tap the `Focus` pill to enter a distraction-free single-task canvas with an integrated countdown timer and interactive subtask checklist.
+          * **🗂️ Smart Sorting & Filtering Sheet + Custom Categories:** Smooth modal bottom sheet to sort tasks by Priority, Due Date, Creation Date, or Alphabetical, plus a custom category creator with semantic palette accent dots.
+          * **💮 Swiss Ink-Stamp Celebration (`DAY COMPLETE • 100%`):** Geometric ink-stamp badge with spring animation and haptic pulse when all daily tasks are completed.
+          * **💾 1-Tap Offline Backup & Restore (`.json`):** Export and import full JSON backups (tasks, notes, habits, and custom categories) directly to device storage with zero cloud dependency.
+          * **📱 Minimalist Home Screen Widget (`MonoDo Today`):** Paper-styled Android home screen widget showing your top 3 priority tasks with direct checkoff and in-app live preview.
+          * **📝 Local Notes Workspace & One-Time Setup Guarantee:** Room-backed notes manager (v6 schema) and synchronous one-time onboarding that never interrupts your workflow.
 
           ---
 
