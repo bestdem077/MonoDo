@@ -92,9 +92,140 @@ class UserProfileManager(context: Context) {
             .commit()
     }
 
+    fun getThemeMode(): AppThemeMode {
+        val raw = prefs.getString(KEY_THEME_MODE, AppThemeMode.LIGHT_PAPER.name)
+        return try {
+            AppThemeMode.valueOf(raw ?: AppThemeMode.LIGHT_PAPER.name)
+        } catch (_: Exception) {
+            AppThemeMode.LIGHT_PAPER
+        }
+    }
+
+    fun saveThemeMode(mode: AppThemeMode): Boolean {
+        return prefs.edit()
+            .putString(KEY_THEME_MODE, mode.name)
+            .commit()
+    }
+
+    fun isAppLockEnabled(): Boolean = prefs.getBoolean(KEY_APP_LOCK_ENABLED, false)
+
+    fun setAppLockEnabled(enabled: Boolean): Boolean {
+        return prefs.edit()
+            .putBoolean(KEY_APP_LOCK_ENABLED, enabled)
+            .commit()
+    }
+
+    fun isPinnedTodayNotificationEnabled(): Boolean =
+        prefs.getBoolean(KEY_PINNED_TODAY_NOTIFICATION, false)
+
+    fun setPinnedTodayNotificationEnabled(enabled: Boolean): Boolean {
+        return prefs.edit()
+            .putBoolean(KEY_PINNED_TODAY_NOTIFICATION, enabled)
+            .commit()
+    }
+
+    fun getDismissedSelfBirthdayYear(): Int = prefs.getInt(KEY_DISMISSED_SELF_BIRTHDAY_YEAR, -1)
+
+    fun setDismissedSelfBirthdayYear(year: Int): Boolean {
+        return prefs.edit()
+            .putInt(KEY_DISMISSED_SELF_BIRTHDAY_YEAR, year)
+            .commit()
+    }
+
+    fun getDismissedUpdateTag(): String = prefs.getString(KEY_DISMISSED_UPDATE_TAG, "") ?: ""
+
+    fun setDismissedUpdateTag(tag: String): Boolean {
+        return prefs.edit()
+            .putString(KEY_DISMISSED_UPDATE_TAG, tag)
+            .commit()
+    }
+
+    fun getLastUpdateCheckMillis(): Long = prefs.getLong(KEY_LAST_UPDATE_CHECK_MILLIS, 0L)
+
+    fun setLastUpdateCheckMillis(timestampMillis: Long): Boolean {
+        return prefs.edit()
+            .putLong(KEY_LAST_UPDATE_CHECK_MILLIS, timestampMillis)
+            .commit()
+    }
+
+    fun savePomodoroState(
+        isRunning: Boolean,
+        isBreak: Boolean,
+        focusMinutes: Int,
+        breakMinutes: Int,
+        endTimeMillis: Long,
+        remainingSeconds: Int,
+        sessionCompletedLogged: Boolean = false
+    ) {
+        prefs.edit()
+            .putBoolean(KEY_POMO_RUNNING, isRunning)
+            .putBoolean(KEY_POMO_IS_BREAK, isBreak)
+            .putInt(KEY_POMO_FOCUS_MIN, focusMinutes)
+            .putInt(KEY_POMO_BREAK_MIN, breakMinutes)
+            .putLong(KEY_POMO_END_TIME, endTimeMillis)
+            .putInt(KEY_POMO_REMAINING_SEC, remainingSeconds)
+            .putBoolean(KEY_POMO_LOGGED, sessionCompletedLogged)
+            .commit()
+    }
+
+    fun getPersistedPomodoroState(): PersistedPomodoroState {
+        return PersistedPomodoroState(
+            isRunning = prefs.getBoolean(KEY_POMO_RUNNING, false),
+            isBreak = prefs.getBoolean(KEY_POMO_IS_BREAK, false),
+            focusMinutes = prefs.getInt(KEY_POMO_FOCUS_MIN, 25),
+            breakMinutes = prefs.getInt(KEY_POMO_BREAK_MIN, 5),
+            endTimeMillis = prefs.getLong(KEY_POMO_END_TIME, 0L),
+            remainingSeconds = prefs.getInt(KEY_POMO_REMAINING_SEC, 25 * 60),
+            sessionCompletedLogged = prefs.getBoolean(KEY_POMO_LOGGED, false)
+        )
+    }
+
+    fun clearPomodoroRunning(resetRemainingSeconds: Int? = null, isBreak: Boolean? = null) {
+        val editor = prefs.edit()
+            .putBoolean(KEY_POMO_RUNNING, false)
+            .putLong(KEY_POMO_END_TIME, 0L)
+        if (resetRemainingSeconds != null) {
+            editor.putInt(KEY_POMO_REMAINING_SEC, resetRemainingSeconds)
+        }
+        if (isBreak != null) {
+            editor.putBoolean(KEY_POMO_IS_BREAK, isBreak)
+        }
+        editor.commit()
+    }
+
     fun resetProfile(): Boolean {
         return prefs.edit()
             .clear()
             .commit()
     }
 }
+
+data class PersistedPomodoroState(
+    val isRunning: Boolean = false,
+    val isBreak: Boolean = false,
+    val focusMinutes: Int = 25,
+    val breakMinutes: Int = 5,
+    val endTimeMillis: Long = 0L,
+    val remainingSeconds: Int = 25 * 60,
+    val sessionCompletedLogged: Boolean = false
+)
+
+enum class AppThemeMode(val title: String, val subtitle: String) {
+    LIGHT_PAPER("Light Paper", "Warm Swiss paper & ink"),
+    DARK_SLATE("Dark Slate", "Low-glare charcoal workspace"),
+    AMOLED_BLACK("Pure Black", "True OLED battery-saving black")
+}
+
+private const val KEY_THEME_MODE = "key_theme_mode"
+private const val KEY_APP_LOCK_ENABLED = "key_app_lock_enabled"
+private const val KEY_PINNED_TODAY_NOTIFICATION = "key_pinned_today_notification"
+private const val KEY_DISMISSED_SELF_BIRTHDAY_YEAR = "key_dismissed_self_birthday_year"
+private const val KEY_POMO_RUNNING = "key_pomo_running"
+private const val KEY_POMO_IS_BREAK = "key_pomo_is_break"
+private const val KEY_POMO_FOCUS_MIN = "key_pomo_focus_min"
+private const val KEY_POMO_BREAK_MIN = "key_pomo_break_min"
+private const val KEY_POMO_END_TIME = "key_pomo_end_time"
+private const val KEY_POMO_REMAINING_SEC = "key_pomo_remaining_sec"
+private const val KEY_POMO_LOGGED = "key_pomo_logged"
+private const val KEY_DISMISSED_UPDATE_TAG = "key_dismissed_update_tag"
+private const val KEY_LAST_UPDATE_CHECK_MILLIS = "key_last_update_check_millis"

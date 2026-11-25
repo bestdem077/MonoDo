@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="56dp"
+        android:height="56dp"
+        android:drawable="@drawable/ic_monodo_notification"
+        android:gravity="center" />
+</layer-list>

@@ -1,9 +1,9 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,85 +17,150 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AddTask
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.NoteEntity
-import com.example.ui.theme.DateTileBackground
-import com.example.ui.theme.FocusedBackground
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.ObsidianBlack
-import com.example.ui.theme.PaperCanvas
-import com.example.ui.theme.PaperSurface
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.SlateGraphite
+import com.example.ui.components.CompactFormTextField
+import com.example.ui.components.NoteEditorSheet
+import com.example.ui.components.SwissEmptyArtType
+import com.example.ui.components.SwissEmptyStateArt
+import com.example.ui.theme.CategoryTheme
+import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.MonoDoThemeTokens
+import com.example.ui.util.HapticFeedbackHelper
 import com.example.ui.viewmodel.TaskViewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonoDoNotesScreen(
     viewModel: TaskViewModel,
     modifier: Modifier = Modifier
 ) {
+    val colors = MonoDoThemeTokens.colors
+    val view = LocalView.current
+    val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+
     val filteredNotes by viewModel.filteredNotes.collectAsState()
     val noteSearchQuery by viewModel.noteSearchQuery.collectAsState()
+    val noteSelectedCategory by viewModel.noteSelectedCategory.collectAsState()
 
-    var showCreateNoteDialog by remember { mutableStateOf(false) }
+    var showNoteSheet by remember { mutableStateOf(false) }
     var selectedNoteForEdit by remember { mutableStateOf<NoteEntity?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val noteCategories = listOf("All", "Work", "Personal", "Health", "Focus", "Ideas", "General")
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(PaperCanvas)
+            .background(colors.canvas)
+            .testTag("mono_do_notes_screen")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 20.dp)
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Compact Search box
-            com.example.ui.components.CompactFormTextField(
+            CompactFormTextField(
                 value = noteSearchQuery,
                 onValueChange = { viewModel.setNoteSearchQuery(it) },
                 placeholder = "Search notes...",
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("notes_search_input")
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Note Category Filter Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                noteCategories.forEach { cat ->
+                    val isSelected = noteSelectedCategory.equals(cat, ignoreCase = true)
+                    val style = CategoryTheme.getStyle(cat, colors.isDark)
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isSelected) colors.primaryInk else style.backgroundColor)
+                            .border(
+                                1.dp,
+                                if (isSelected) colors.primaryInk else style.borderColor,
+                                RoundedCornerShape(16.dp)
+                            )
+                            .clickable {
+                                HapticFeedbackHelper.performSelectionHaptic(view, haptic)
+                                viewModel.setNoteSelectedCategory(cat)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .testTag("notes_filter_${cat.lowercase()}")
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (!cat.equals("All", ignoreCase = true)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) colors.canvas else style.accentColor)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = cat,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) colors.canvas else style.textColor,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -106,11 +171,37 @@ fun MonoDoNotesScreen(
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (noteSearchQuery.isBlank()) "No notes yet. Tap + to write one." else "No notes match your search.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SlateGraphite
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    ) {
+                        SwissEmptyStateArt(
+                            type = SwissEmptyArtType.NOTES,
+                            size = 88.dp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = if (noteSearchQuery.isBlank() && noteSelectedCategory.equals("All", ignoreCase = true)) {
+                                "Your notebook is blank"
+                            } else {
+                                "No matching notes"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.primaryInk,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (noteSearchQuery.isBlank() && noteSelectedCategory.equals("All", ignoreCase = true)) {
+                                "Tap + to capture ideas, checklists, or quick thoughts offline."
+                            } else {
+                                "Try clearing your search or switching note categories."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.secondaryInk,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             } else {
                 LazyColumn(
@@ -118,15 +209,21 @@ fun MonoDoNotesScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredNotes, key = { it.id }) { note ->
-                        NoteCardItem(
-                            note = note,
-                            onTogglePin = { viewModel.togglePinNote(note) },
-                            onDelete = { viewModel.deleteNote(note) },
-                            onClick = { selectedNoteForEdit = note }
-                        )
+                        Box(modifier = Modifier.animateItem()) {
+                            NoteCardItem(
+                                note = note,
+                                onTogglePin = { viewModel.togglePinNote(note) },
+                                onConvertToTask = { viewModel.convertNoteToTask(note) },
+                                onDelete = { viewModel.deleteNote(note) },
+                                onClick = {
+                                    selectedNoteForEdit = note
+                                    showNoteSheet = true
+                                }
+                            )
+                        }
                     }
                     item {
-                        Spacer(modifier = Modifier.height(80.dp))
+                        Spacer(modifier = Modifier.height(88.dp))
                     }
                 }
             }
@@ -134,42 +231,56 @@ fun MonoDoNotesScreen(
 
         // Add Note FAB
         FloatingActionButton(
-            onClick = { showCreateNoteDialog = true },
-            containerColor = RoyalBlue,
+            onClick = {
+                selectedNoteForEdit = null
+                showNoteSheet = true
+            },
+            containerColor = colors.accent,
             contentColor = Color.White,
             shape = CircleShape,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(bottom = 20.dp, end = 20.dp)
-                .size(52.dp)
+                .size(54.dp)
+                .testTag("add_note_fab")
         ) {
             Icon(Icons.Default.Add, contentDescription = "Add Note")
         }
 
-        // Create or Edit Note Dialog
-        if (showCreateNoteDialog) {
-            NoteEditDialog(
-                initialTitle = "",
-                initialContent = "",
-                dialogTitle = "New Note",
-                onDismiss = { showCreateNoteDialog = false },
-                onSave = { title, content ->
-                    viewModel.createNote(title, content)
-                    showCreateNoteDialog = false
-                }
-            )
-        }
-
-        selectedNoteForEdit?.let { note ->
-            NoteEditDialog(
-                initialTitle = note.title,
-                initialContent = note.content,
-                dialogTitle = "Edit Note",
-                onDismiss = { selectedNoteForEdit = null },
-                onSave = { title, content ->
-                    viewModel.updateNote(note.copy(title = title, content = content))
-                    selectedNoteForEdit = null
-                }
+        // Upgraded NoteEditorSheet (Create / Edit + Category + Pin + Word Count + 1-Tap Note-to-Task)
+        if (showNoteSheet) {
+            NoteEditorSheet(
+                sheetState = sheetState,
+                noteToEdit = selectedNoteForEdit,
+                onDismiss = {
+                    coroutineScope.launch {
+                        sheetState.hide()
+                        showNoteSheet = false
+                        selectedNoteForEdit = null
+                    }
+                },
+                onSaveNote = { title, content, category, isPinned ->
+                    val existing = selectedNoteForEdit
+                    if (existing != null) {
+                        viewModel.updateNote(
+                            existing.copy(
+                                title = title.trim(),
+                                content = content.trim(),
+                                category = category,
+                                isPinned = isPinned
+                            )
+                        )
+                    } else {
+                        viewModel.createNote(
+                            title = title,
+                            content = content,
+                            category = category,
+                            isPinned = isPinned
+                        )
+                    }
+                },
+                onDeleteNote = { note -> viewModel.deleteNote(note) },
+                onConvertToTask = { note -> viewModel.convertNoteToTask(note) }
             )
         }
     }
@@ -179,20 +290,30 @@ fun MonoDoNotesScreen(
 private fun NoteCardItem(
     note: NoteEntity,
     onTogglePin: () -> Unit,
+    onConvertToTask: () -> Unit,
     onDelete: () -> Unit,
     onClick: () -> Unit
 ) {
-    val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+    val colors = MonoDoThemeTokens.colors
+    val view = LocalView.current
+    val haptic = LocalHapticFeedback.current
+    val sdf = remember { SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()) }
     val formattedDate = sdf.format(Date(note.updatedAt))
+    val catStyle = CategoryTheme.getStyle(note.category.ifBlank { "General" }, colors.isDark)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(PaperSurface)
-            .border(1.dp, if (note.isPinned) RoyalBlue else HairlineBorder, RoundedCornerShape(14.dp))
+            .background(colors.surface)
+            .border(
+                width = 1.dp,
+                color = if (note.isPinned) colors.accent else colors.border,
+                shape = RoundedCornerShape(14.dp)
+            )
             .clickable { onClick() }
             .padding(16.dp)
+            .testTag("note_card_${note.id}")
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -204,31 +325,54 @@ private fun NoteCardItem(
                     text = note.title.ifBlank { "Untitled Note" },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = ObsidianBlack,
-                    modifier = Modifier.weight(1f)
+                    color = colors.primaryInk,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = onTogglePin,
-                        modifier = Modifier.size(28.dp)
+                        onClick = {
+                            HapticFeedbackHelper.performTaskCreationHaptic(view, haptic)
+                            onConvertToTask()
+                        },
+                        modifier = Modifier.size(34.dp)
                     ) {
                         Icon(
-                            imageVector = if (note.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = "Pin Note",
-                            tint = if (note.isPinned) RoyalBlue else SlateGraphite,
+                            imageVector = Icons.Default.AddTask,
+                            contentDescription = "Convert Note to Task",
+                            tint = colors.accent,
                             modifier = Modifier.size(16.dp)
                         )
                     }
 
                     IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(28.dp)
+                        onClick = {
+                            HapticFeedbackHelper.performSelectionHaptic(view, haptic)
+                            onTogglePin()
+                        },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (note.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                            contentDescription = "Pin Note",
+                            tint = if (note.isPinned) colors.accent else colors.secondaryInk,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            HapticFeedbackHelper.performDeleteHaptic(view, haptic)
+                            onDelete()
+                        },
+                        modifier = Modifier.size(34.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
                             contentDescription = "Delete Note",
-                            tint = SlateGraphite,
+                            tint = colors.secondaryInk,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -240,7 +384,7 @@ private fun NoteCardItem(
                 Text(
                     text = note.content,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = SlateGraphite,
+                    color = colors.secondaryInk,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -248,72 +392,34 @@ private fun NoteCardItem(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Text(
-                text = formattedDate,
-                style = MaterialTheme.typography.labelSmall,
-                color = SlateGraphite,
-                fontSize = 10.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(catStyle.backgroundColor)
+                        .border(1.dp, catStyle.borderColor, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = note.category.ifBlank { "General" },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = catStyle.textColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    )
+                }
+
+                Text(
+                    text = formattedDate,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
+                    color = colors.secondaryInk,
+                    fontSize = 10.sp
+                )
+            }
         }
     }
-}
-
-@Composable
-private fun NoteEditDialog(
-    initialTitle: String,
-    initialContent: String,
-    dialogTitle: String,
-    onDismiss: () -> Unit,
-    onSave: (title: String, content: String) -> Unit
-) {
-    var title by remember { mutableStateOf(initialTitle) }
-    var content by remember { mutableStateOf(initialContent) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = dialogTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = ObsidianBlack
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                com.example.ui.components.CompactFormTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    placeholder = "Note Title",
-                    singleLine = true,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                com.example.ui.components.CompactFormTextField(
-                    value = content,
-                    onValueChange = { content = it },
-                    placeholder = "Write your note...",
-                    singleLine = false,
-                    minLines = 3,
-                    maxLines = 6,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onSave(title, content) },
-                colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Save", color = Color.White)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = SlateGraphite)
-            }
-        },
-        containerColor = PaperSurface
-    )
 }

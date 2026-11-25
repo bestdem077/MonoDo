@@ -1,135 +1,103 @@
 # MonoDo — Agent Context & Operational Guidelines
 
-This document serves as the single source of truth for AI agents and developers working on the **MonoDo** codebase. Read this file to understand the architecture, design rules, feature specifications, and constraints before making code changes.
+This document serves as the single source of truth for AI agents and developers working on the **MonoDo** codebase. Read every rule carefully before making any code, Gradle, Manifest, or workflow changes.
 
 ---
 
-## 1. Project Overview & Philosophy
+## 1. Project Overview & Official Identity
 
-- **App Name:** MonoDo
-- **Version:** 2.0.0 (versionCode: 3)
+- **App Name (`app_name`):** `MonoDo`
+- **Application ID (`applicationId`):** `com.aistudio.monodo.kxmpzq`
+- **Android Namespace (`namespace`):** `com.example`
+- **Official Public GitHub Repository:** `https://github.com/bestdem077/MonoDo`
+- **Latest Release API Endpoint:** `https://api.github.com/repos/bestdem077/MonoDo/releases/latest`
+- **Base Version:** `2.1.0` (`baseVersionCode = 10`, auto-incremented on GitHub Actions via `GITHUB_RUN_NUMBER`)
 - **Creator / Branding:** Created by Vishal D. (Vishal Dhangar)
-- **Platform:** Android (Jetpack Compose, Material 3, Kotlin Coroutines & Flow, Room Database)
-- **Core Value Proposition:** 100% offline, privacy-focused, distraction-free minimalist productivity workspace.
-- **Visual Design Identity:** Swiss paper minimalist monochrome aesthetic elevated with refined **Royal Blue** (`#2563EB`) accents for primary CTAs, active highlights, badges, and creation affordances.
+- **Platform:** Android (Jetpack Compose, Material 3, Kotlin Coroutines & Flow, Room Database v10)
+- **Core Value Proposition:** 100% offline, privacy-focused minimalist productivity workspace (Tasks, Monthly Calendar, Habits, Birthdays, Notes, Pomodoro, Widgets, Stats) with optional in-app GitHub Release updates.
+- **Visual Design Identity:** Swiss paper minimalist monochrome aesthetic (Light Paper, Dark Slate, Pure Black AMOLED) elevated with refined **Royal Blue** (`#2563EB`) accents.
 
 ---
 
-## 2. Inviolable Core Constraints & Rules
+## 2. CRITICAL IN-PLACE UPDATE & PACKAGE IDENTITY LOCKS (NEVER BREAK!)
 
-1. **NO LOGIN / NO SIGNUP:**
-   - MonoDo is strictly 100% offline and local-first.
-   - **NEVER** implement authentication flows, OAuth, Firebase Auth, Google Sign-In, or account creation screens. If an image or design reference shows Login/Signup buttons (e.g. "Continue with Google", "Sign In"), **ignore those options entirely**.
+These rules exist to guarantee that every new APK built via GitHub Actions installs **cleanly over the user's existing MonoDo app WITHOUT installing a duplicate app and WITHOUT losing any user data**:
+
+1. **NEVER CHANGE `applicationId`:**
+   - `applicationId` in `app/build.gradle.kts` **MUST ALWAYS remain `"com.aistudio.monodo.kxmpzq"`**.
+   - Changing `applicationId` causes Android to treat the update as a completely separate second app, leaving the user's tasks, notes, habits, and birthdays stranded in the old app!
+2. **NEVER CHANGE `namespace` OR `app_name`:**
+   - Keep `namespace = "com.example"` in `app/build.gradle.kts` and `<string name="app_name">MonoDo</string>` in `strings.xml`.
+3. **NEVER MODIFY OR REGENERATE SIGNING KEYSTORES:**
+   - **NEVER** modify, delete, or regenerate `debug.keystore`, `debug.keystore.base64`, `signingConfigs` in `app/build.gradle.kts`, or the fixed canonical keystore block in `.github/workflows/build-apk.yml`.
+   - Changing the signing certificate causes Android to reject in-place updates with *"App not installed as package conflicts with an existing package"*.
+4. **MONOTONICALLY INCREASING `versionCode`:**
+   - Never lower `baseVersionCode` below `10` (and keep `baseVersionName` strictly above the last published GitHub release so in-development builds never prompt to install older releases).
+   - Preserve the CI `GITHUB_RUN_NUMBER` + `MONODO_RELEASE_TAG` logic in `app/build.gradle.kts` and `.github/workflows/build-apk.yml` so every GitHub Release APK has a strictly higher `versionCode` and matching `BuildConfig.GITHUB_RELEASE_TAG`.
+5. **NON-DESTRUCTIVE ROOM MIGRATIONS ONLY:**
+   - `AppDatabase` is currently **Version 10**.
+   - Whenever modifying or adding Room tables/columns, **ALWAYS** increment the database version and provide an explicit non-destructive `Migration(oldVersion, newVersion)`. **NEVER** enable `fallbackToDestructiveMigration()` — doing so wipes user data on update.
+6. **APP LAUNCHER ICON GUARD:**
+   - Do **NOT** modify `ic_launcher*` or `ic_monodo_logo` unless the user explicitly asks to redesign/change the icon.
+7. **GITHUB REPOSITORY LOCK:**
+   - Keep `BuildConfig.GITHUB_REPO = "bestdem077/MonoDo"` so the in-app GitHub Release updater always points to the official public repository.
+
+---
+
+## 3. Inviolable Product Constraints
+
+1. **NO LOGIN / NO SIGNUP / NO CLOUD DATA SYNC:**
+   - MonoDo's user data (tasks, notes, habits, birthdays, templates, stats) is strictly 100% offline and local-first.
+   - **NEVER** implement authentication flows, OAuth, Firebase Auth, Google Sign-In, Firestore sync, or account creation screens.
+   - Network access (`INTERNET`, `ACCESS_NETWORK_STATE`) is used **exclusively** for checking/downloading official public GitHub Releases (`bestdem077/MonoDo`). When offline, the app must continue working 100% silently with zero errors.
 
 2. **ONBOARDING & WELCOME SCREEN (ONE-TIME ONLY):**
-   - The Welcome/Onboarding screen (`MonoDoOnboardingScreen.kt`) collects the user's name and optional workspace title on first launch.
-   - Once saved or skipped, user profile is committed to disk via `UserProfileManager.saveProfile()` using `commit()` (synchronous disk write).
-   - `isOnboarded` is checked on launch: if `true` or if user name is present, the welcome screen **MUST NEVER** appear again on subsequent app opens.
-   - The onboarding screen only re-appears if the user explicitly triggers **"Reset All Data & Setup"** in Settings or if app storage is cleared.
-   - Onboarding button text is **"Enter MonoDo"** (or dynamically `Enter <WorkspaceName>`), **NEVER** generic "Enter Workspace".
-   - The logo displayed on the onboarding screen is the emboldened MonoDo emblem vector (`R.drawable.ic_monodo_logo`), **NEVER** a bare letter "M".
+   - `MonoDoOnboardingScreen.kt` collects the user's name, date of birth, and morning briefing preference on first launch.
+   - Committed synchronously via `UserProfileManager.saveProfile()` (`commit()`).
+   - Never shown again on subsequent opens unless the user triggers **"Reset All Data & Setup"** in Settings.
 
-3. **NAVIGATION TABS (4 PRIMARY DESTINATIONS):**
-   - **Tasks:** Inline Quick-Add bar + 1-Tap Quick Deadline Chips (`Today`, `Tomorrow`, `This Weekend`, `Next Week`), 7-Day Habit Dot Matrix Tracker, active tasks with `pointerInput` horizontal swipe-to-complete and swipe-for-actions (`Today`, `Tomorrow`, `Delete`), Zen Focus Mode fullscreen canvas, subtasks checklist, custom category filter bar with semantic palette picker, smart sorting & filtering sheet, daily streak counter, Swiss ink-stamp celebration badge, collapsible completed section.
-   - **Stats:** Weekly completion bar chart (7-day activity), daily totals, productivity analytics.
-   - **Center Floating '+' Button:** Royal Blue elevated circular pill that opens the task creation bottom sheet.
-   - **Tools:** Replaces the old "Focus Tools" / "Scratchpad". Contains:
-     1. **Notes Application:** Room database-backed notes with category pills, pinning, instant title/body search, note detail viewer/editor, and deletion.
-     2. **Pomodoro / Focus Timer:** 25/5 min focus sessions, audio tick toggles, full focus mode.
-     3. **Home Widget (`MonoDo Today`):** Live interactive widget preview and 1-tap launcher pinning.
-   - **Settings:** Profile customization (User Name, Workspace Title), Daily Reminder alarm scheduler, Data Management (1-Tap Offline Backup & Restore `.json`, Clear Completed Tasks, Reset All Data & Setup), and Developer credits.
+3. **IN-APP GITHUB UPDATE FLOW (`data/update/` + `AppUpdateSheet.kt`):**
+   - Queries `https://api.github.com/repos/bestdem077/MonoDo/releases/latest`.
+   - Compares remote `tag_name` against `BuildConfig.GITHUB_RELEASE_TAG` via `VersionComparator`.
+   - Downloads the APK with live progress into `cacheDir/updates/` **AND** exports a copy to the public **Downloads** folder (`MediaStore.Downloads` on Android 10+, zero storage permission needed).
+   - Supports BOTH:
+     - **Direct In-App Install** (via `FileProvider` + `REQUEST_INSTALL_PACKAGES`), and
+     - **Zero-Permission Fallback** ("Open Downloads Folder") for users who prefer installing manually from `Downloads/MonoDo-vX.Y.Z.apk`.
 
-4. **STORAGE & PERSISTENCE:**
-   - **Room Database (`AppDatabase.kt`, Version 6):**
-     - `TaskEntity` + `TaskDao`: Primary task and subtask persistence.
-     - `NoteEntity` + `NoteDao`: Full Notes application storage (`notes` table).
-     - `HabitEntity` + `HabitLogEntity` + `HabitDao`: 7-Day Habit Dot Matrix persistence.
-     - `CustomCategoryEntity` + `CustomCategoryDao`: Custom user categories with semantic color hexes.
-   - **SharedPreferences (`UserProfileManager.kt`):**
-     - User's name, custom workspace title, and `isOnboarded` boolean flag with `commit()`.
-   - **Daily Reminder Preferences (`DailyReminderPreferences.kt`):**
-     - Scheduled notification hour, minute, and enabled status.
+4. **NAVIGATION TABS (4 PRIMARY DESTINATIONS + CENTER FAB):**
+   - **Tasks:** Inline Quick-Add + 1-Tap Deadline Chips, Smart Sections (Overdue, Today, Upcoming), Monthly Calendar toggle (Tasks + Birthdays), 7-Day Habit Dot Matrix, swipe gestures, tactile checkbox & strikethrough animation, reusable Task Templates, Zen Focus Mode, user's own birthday celebration banner, dismissible update banner.
+   - **Stats:** 7-day weekly bar chart & 28-day heatmap with Tap-to-Inspect tooltips, focus minutes, streak & completion analytics.
+   - **Center Floating '+' Button:** Royal Blue pill opening the Create/Edit Task & Templates bottom sheet.
+   - **Tools:**
+     1. **Notes:** Room-backed notes with pinning, search, category pills, Note-to-Task conversion.
+     2. **Pomodoro Timer:** Persistent background countdown with ongoing notification + exact alarm completion alert + focus stats logging.
+     3. **Birthdays:** Friends/family birthday tracker with 3h/4h pre-midnight & 12 AM exact alarms, search + Countdown/By-Month toggle, 1-Tap Wish Templates (Friend/Family/Formal), notification Copy/Share wish actions.
+     4. **Widgets:** Scrollable Agenda List widget (`MonoDoWidgetProvider`) & Focus Glance tile (`MonoDoQuickWidgetProvider`).
+   - **Settings:** Profile, 3 Themes (Light Paper / Dark Slate / Pure Black AMOLED), Morning Briefing & Doze-proof exact alarms, Pinned Today's Tasks card (opt-in), Biometric/PIN App Lock, JSON Backup & Restore (v6), **App Updates (GitHub)**, Clear Completed, Reset All.
 
 5. **CLEAN PRODUCTION & ZERO DUMMY DATA:**
-   - Production builds start with a 100% pristine, empty database.
-   - Do **NOT** auto-inject dummy, mock, or sample tasks/notes on launch.
-   - Any legacy test fixtures are purged via `removeSampleDataIfPresent()`.
-   - Empty states provide elegant minimalist guidance ("Tap the + button below to add your first task").
+   - Start with a pristine empty database. Never inject dummy/mock tasks, notes, or birthdays on launch.
 
 ---
 
-## 3. Design System & Color Palette (`com.example.ui.theme`)
+## 4. Storage & Persistence Overview
 
-| Token Name | Hex Value | Purpose |
-| :--- | :--- | :--- |
-| `PaperCanvas` | `#FAF9F6` | Warm, clean paper background for screens |
-| `PaperSurface` | `#FFFFFF` | Pure white card surfaces, bottom sheets, dialogs |
-| `PaperSurfaceVariant` | `#F2F1ED` | Elevated secondary surface |
-| `ObsidianBlack` | `#111111` | Primary high-contrast typography & dark badges |
-| `CharcoalDark` | `#1E1E1E` | Deep charcoal for secondary dark components |
-| `SlateGraphite` | `#6B6B6B` | Captions, secondary labels, metadata, placeholders |
-| `HairlineBorder` | `#E5E5DF` | Card dividers, outlines, hairline borders |
-| `RoyalBlue` | `#2563EB` | **Primary curated accent** for CTAs, active tabs, center FAB, highlights |
-| `RoyalBlueHover`| `#1D4ED8` | Pressed / active state for Royal Blue elements |
-| `RoyalBlueSoft` | `#EFF6FF` | Soft background tint for pills, avatar frames, badges |
-| `RoyalBlueBorder`| `#BFDBFE` | Pastel blue delicate outline for chips and inputs |
-| `RoyalBlueMuted`| `#3B82F6` | Secondary vibrant blue highlight |
-
----
-
-## 4. Key Codebase Directories & Files
-
-```
-app/src/main/java/com/example/
-├── MainActivity.kt                        # Edge-to-edge entry point
-├── data/
-│   ├── db/
-│   │   ├── AppDatabase.kt                # Room DB with TaskDao & NoteDao
-│   │   ├── Converters.kt                 # SubTask JSON converters
-│   │   ├── NoteDao.kt                    # Note CRUD, queries, search, counts
-│   │   ├── TaskDao.kt                    # Task CRUD, queries, search, counts
-│   │   └── TaskRepository.kt             # Task repository abstractions
-│   ├── model/
-│   │   ├── NoteEntity.kt                 # Note data entity (id, title, content, category, isPinned, createdAt, updatedAt)
-│   │   ├── SubTask.kt                    # Subtask item model
-│   │   ├── TaskEntity.kt                 # Task data entity
-│   │   └── TaskPriority.kt               # LOW, MEDIUM, HIGH, URGENT
-│   └── user/
-│       ├── DailyReminderPreferences.kt   # Reminder alarm settings
-│       └── UserProfileManager.kt         # Synchronous profile & onboarding state
-├── ui/
-│   ├── components/
-│   │   ├── CategoryChipsRow.kt           # Category filter bar with color styles
-│   │   ├── MonoDoBottomBar.kt            # 4-tab bottom navigation with center '+' FAB
-│   │   ├── MonochromeHeader.kt           # Date, greeting, streak badge, reminder bell
-│   │   └── TaskCard.kt                   # Task item with checkbox, subtasks, delete
-│   ├── navigation/
-│   │   └── NavigationTab.kt              # TASKS, STATS, TOOLS, SETTINGS
-│   ├── screens/
-│   │   ├── MonoDoHomeScreen.kt           # Primary scaffold container & tab coordinator
-│   │   ├── MonoDoNotesScreen.kt          # Complete Room-backed Notes manager
-│   │   ├── MonoDoOnboardingScreen.kt     # First-run welcome & profile setup
-│   │   ├── MonoDoSettingsScreen.kt       # Profile edit, reminders, reset data
-│   │   ├── MonoDoStatsScreen.kt          # Productivity analytics & 7-day charts
-│   │   ├── MonoDoTasksScreen.kt          # Active tasks list, category filter, search
-│   │   └── MonoDoToolsScreen.kt          # Tools tab host (Notes, Timer, Utilities)
-│   ├── theme/
-│   │   ├── Color.kt                      # Monochrome + Royal Blue palette
-│   │   ├── CategoryTheme.kt              # Semantic color tokens for categories
-│   │   └── Theme.kt                      # MaterialTheme setup
-│   └── viewmodel/
-│       └── TaskViewModel.kt              # Central ViewModel for Tasks, Notes & Analytics
-└── res/
-    └── drawable/
-        ├── ic_monodo_logo.xml            # Official emboldened MonoDo emblem vector
-        ├── ic_launcher_background.xml    # Adaptive launcher background
-        └── ic_launcher_foreground.xml    # Adaptive launcher foreground
-```
+- **Room Database (`AppDatabase.kt`, Version 10):**
+  - `tasks` (`TaskEntity` + `TaskDao`)
+  - `notes` (`NoteEntity` + `NoteDao`)
+  - `habits` & `habit_logs` (`HabitEntity`, `HabitLogEntity`, `HabitDao`)
+  - `custom_categories` (`CustomCategoryEntity`, `CustomCategoryDao`)
+  - `focus_sessions` (`FocusSessionEntity`, `FocusSessionDao`)
+  - `birthdays` (`BirthdayEntity`, `BirthdayDao`)
+  - `routine_templates` (`RoutineTemplateEntity`, `RoutineTemplateDao`)
+- **SharedPreferences:**
+  - `UserProfileManager.kt`: User profile, theme mode, App Lock toggle, Pinned Today notification toggle, Pomodoro persistence, dismissed update tag & last update check timestamp.
+  - `ReminderPreferences.kt`: Daily briefing alarm schedule.
 
 ---
 
 ## 5. Testing & Verification
 
-- **Robolectric JVM Tests:** Located in `app/src/test/java/com/example/ExampleRobolectricTest.kt`.
-- **Command:** `gradle :app:testDebugUnitTest`
-- **Compiler Check:** Use `compile_applet` tool to ensure pristine Gradle compilation without errors.
+- **Pure JVM Unit Tests:** `app/src/test/java/com/example/ExampleUnitTest.kt`
+  - Command: `gradle :app:testDebugUnitTest --tests "com.example.ExampleUnitTest"`
+- **Compiler Verification:** Always run `compile_applet` after code changes.

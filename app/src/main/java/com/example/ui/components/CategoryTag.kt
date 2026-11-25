@@ -14,13 +14,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.CategoryTheme
+import com.example.ui.theme.MonoDoThemeTokens
 
 @Composable
 fun CategoryTag(
     category: String,
     modifier: Modifier = Modifier
 ) {
-    val style = CategoryTheme.getStyle(category)
+    val colors = MonoDoThemeTokens.colors
+    val style = CategoryTheme.getStyle(category, colors.isDark)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))

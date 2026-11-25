@@ -220,4 +220,53 @@ class ExampleRobolectricTest {
         assertTrue(weekendTs > todayTs)
         assertTrue(nextWeekTs > todayTs)
     }
+
+    @Test
+    fun `theme mode persistence test`() {
+        val manager = UserProfileManager(context)
+        manager.resetProfile()
+        assertEquals(com.example.data.user.AppThemeMode.LIGHT_PAPER, manager.getThemeMode())
+
+        assertTrue(manager.saveThemeMode(com.example.data.user.AppThemeMode.DARK_SLATE))
+        assertEquals(com.example.data.user.AppThemeMode.DARK_SLATE, manager.getThemeMode())
+
+        assertTrue(manager.saveThemeMode(com.example.data.user.AppThemeMode.AMOLED_BLACK))
+        assertEquals(com.example.data.user.AppThemeMode.AMOLED_BLACK, manager.getThemeMode())
+    }
+
+    @Test
+    fun `task recurrence and focus session room persistence test`() = runBlocking {
+        val taskDao = db.taskDao()
+        val focusDao = db.focusSessionDao()
+
+        val taskId = taskDao.insertTask(
+            TaskEntity(
+                title = "Daily Standup",
+                recurrence = com.example.data.model.TaskRecurrence.DAILY
+            )
+        )
+        val loaded = taskDao.getTaskById(taskId)
+        assertNotNull(loaded)
+        assertEquals(com.example.data.model.TaskRecurrence.DAILY, loaded!!.recurrence)
+        assertEquals(1, taskDao.getActiveTaskCount())
+
+        taskDao.updateTask(loaded.copy(isCompleted = true))
+        assertEquals(0, taskDao.getActiveTaskCount())
+
+        val nextDaily = com.example.data.model.TaskRecurrence.DAILY.nextDueDate(1760698800000L)
+        assertTrue(nextDaily > 1760698800000L)
+
+        val sessionId = focusDao.insertSession(
+            com.example.data.model.FocusSessionEntity(
+                durationMinutes = 25,
+                taskId = taskId,
+                taskTitle = "Daily Standup",
+                localEpochDay = com.example.ui.util.LocalDayUtils.toLocalEpochDay()
+            )
+        )
+        assertTrue(sessionId > 0)
+        val sessions = focusDao.getAllSessions().first()
+        assertEquals(1, sessions.size)
+        assertEquals(25, sessions[0].durationMinutes)
+    }
 }

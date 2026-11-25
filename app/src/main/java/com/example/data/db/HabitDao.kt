@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.data.model.HabitEntity
 import com.example.data.model.HabitLogEntity
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,9 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHabit(habit: HabitEntity): Long
 
+    @Update
+    suspend fun updateHabit(habit: HabitEntity)
+
     @Query("DELETE FROM habits WHERE id = :id")
     suspend fun deleteHabitById(id: Long)
 
@@ -24,6 +28,9 @@ interface HabitDao {
 
     @Query("SELECT * FROM habit_logs WHERE dateEpochDay >= :startEpochDay AND dateEpochDay <= :endEpochDay")
     fun getLogsForDateRange(startEpochDay: Long, endEpochDay: Long): Flow<List<HabitLogEntity>>
+
+    @Query("SELECT * FROM habit_logs ORDER BY dateEpochDay DESC")
+    fun getAllLogs(): Flow<List<HabitLogEntity>>
 
     @Query("SELECT * FROM habit_logs WHERE habitId = :habitId")
     fun getLogsForHabit(habitId: Long): Flow<List<HabitLogEntity>>

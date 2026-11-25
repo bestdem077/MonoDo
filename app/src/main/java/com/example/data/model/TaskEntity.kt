@@ -16,5 +16,7 @@ data class TaskEntity(
     val isCompleted: Boolean = false,
     val subtasks: List<SubTask> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    val recurrence: TaskRecurrence = TaskRecurrence.NONE,
+    val reminderAt: Long? = null
 )

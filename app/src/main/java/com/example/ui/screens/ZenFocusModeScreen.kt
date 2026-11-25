@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -15,15 +14,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -59,14 +60,11 @@ import com.example.data.model.TaskEntity
 import com.example.ui.components.MonochromeCheckbox
 import com.example.ui.components.MonochromePriorityBadge
 import com.example.ui.theme.CategoryTheme
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.ObsidianBlack
-import com.example.ui.theme.PaperCanvas
-import com.example.ui.theme.PaperSurface
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.SlateGraphite
+import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.MonoDoThemeTokens
 import com.example.ui.util.HapticFeedbackHelper
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 @Composable
 fun ZenFocusModeScreen(
@@ -74,25 +72,41 @@ fun ZenFocusModeScreen(
     onExit: () -> Unit,
     onCompleteTask: () -> Unit,
     onToggleSubtask: (subtaskId: String) -> Unit,
+    onLogFocusSession: ((minutes: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    BackHandler { onExit() }
-
+    val colors = MonoDoThemeTokens.colors
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
 
     // Timer state (in seconds)
     var initialDuration by remember { mutableIntStateOf(25 * 60) }
     var secondsRemaining by remember { mutableIntStateOf(initialDuration) }
+    var elapsedFocusSeconds by remember { mutableIntStateOf(0) }
     var isTimerRunning by remember { mutableStateOf(false) }
+
+    fun flushFocusLog() {
+        val loggedMinutes = elapsedFocusSeconds / 60
+        if (loggedMinutes >= 1) {
+            onLogFocusSession?.invoke(loggedMinutes)
+            elapsedFocusSeconds = 0
+        }
+    }
+
+    BackHandler {
+        flushFocusLog()
+        onExit()
+    }
 
     LaunchedEffect(isTimerRunning) {
         while (isTimerRunning && secondsRemaining > 0) {
             delay(1000L)
             secondsRemaining -= 1
+            elapsedFocusSeconds += 1
         }
         if (secondsRemaining == 0 && isTimerRunning) {
             isTimerRunning = false
+            flushFocusLog()
             HapticFeedbackHelper.performTaskCompletionHaptic(view, haptic)
         }
     }
@@ -104,13 +118,15 @@ fun ZenFocusModeScreen(
 
     val minutes = secondsRemaining / 60
     val seconds = secondsRemaining % 60
-    val timeFormatted = String.format("%02d:%02d", minutes, seconds)
+    val timeFormatted = String.format(Locale.US, "%02d:%02d", minutes, seconds)
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(PaperCanvas)
-            .padding(horizontal = 24.dp, vertical = 20.dp)
+            .background(colors.canvas)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
             .testTag("zen_focus_mode_screen"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -121,18 +137,21 @@ fun ZenFocusModeScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             IconButton(
-                onClick = onExit,
+                onClick = {
+                    flushFocusLog()
+                    onExit()
+                },
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, CircleShape)
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, CircleShape)
                     .testTag("zen_exit_button")
             ) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Exit Zen Focus",
-                    tint = ObsidianBlack,
+                    tint = colors.primaryInk,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -140,7 +159,7 @@ fun ZenFocusModeScreen(
             Text(
                 text = "ZEN FOCUS",
                 style = MaterialTheme.typography.labelSmall,
-                color = SlateGraphite,
+                color = colors.secondaryInk,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp
             )
@@ -148,34 +167,35 @@ fun ZenFocusModeScreen(
             // Reset Timer button
             IconButton(
                 onClick = {
+                    flushFocusLog()
                     isTimerRunning = false
                     secondsRemaining = initialDuration
                     HapticFeedbackHelper.performSelectionHaptic(view, haptic)
                 },
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, CircleShape)
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "Reset Timer",
-                    tint = SlateGraphite,
+                    tint = colors.secondaryInk,
                     modifier = Modifier.size(18.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(22.dp))
 
         // Task Header Card
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(PaperSurface)
-                .border(1.dp, HairlineBorder, RoundedCornerShape(16.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.border, RoundedCornerShape(16.dp))
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -183,7 +203,7 @@ fun ZenFocusModeScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val catStyle = CategoryTheme.getStyle(task.category)
+                val catStyle = CategoryTheme.getStyle(task.category, colors.isDark)
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -206,7 +226,7 @@ fun ZenFocusModeScreen(
             Text(
                 text = task.title,
                 style = MaterialTheme.typography.titleLarge,
-                color = ObsidianBlack,
+                color = colors.primaryInk,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
@@ -216,28 +236,26 @@ fun ZenFocusModeScreen(
                 Text(
                     text = task.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = SlateGraphite,
+                    color = colors.secondaryInk,
                     textAlign = TextAlign.Center
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(26.dp))
 
         // Minimalist Circular Focus Timer
         Box(
-            modifier = Modifier.size(200.dp),
+            modifier = Modifier.size(204.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                // Background Track
                 drawCircle(
-                    color = Color(0xFFE5E5DF),
+                    color = colors.border,
                     style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round)
                 )
-                // Active Arc
                 drawArc(
-                    color = RoyalBlue,
+                    color = colors.accent,
                     startAngle = -90f,
                     sweepAngle = animatedProgress * 360f,
                     useCenter = false,
@@ -248,15 +266,17 @@ fun ZenFocusModeScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = timeFormatted,
-                    style = MaterialTheme.typography.displayMedium,
-                    color = ObsidianBlack,
+                    style = MaterialTheme.typography.displayMedium.copy(
+                        fontFamily = JetBrainsMonoFontFamily
+                    ),
+                    color = colors.primaryInk,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-1).sp
                 )
                 Text(
                     text = if (isTimerRunning) "IN DEEP FOCUS" else "PAUSED",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isTimerRunning) RoyalBlue else SlateGraphite,
+                    color = if (isTimerRunning) colors.accent else colors.secondaryInk,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
@@ -265,17 +285,16 @@ fun ZenFocusModeScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Timer Controls (+5m, Play/Pause, -5m)
+        // Timer Controls (-5m, Play/Pause, +5m)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // -5 min
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(12.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
                     .clickable {
                         if (secondsRemaining > 300) {
                             secondsRemaining -= 300
@@ -283,21 +302,25 @@ fun ZenFocusModeScreen(
                             HapticFeedbackHelper.performSelectionHaptic(view, haptic)
                         }
                     }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                Text("-5m", style = MaterialTheme.typography.labelMedium, color = SlateGraphite)
+                Text(
+                    text = "-5m",
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = JetBrainsMonoFontFamily),
+                    color = colors.secondaryInk,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
-            // Play / Pause Primary Pill
             IconButton(
                 onClick = {
                     HapticFeedbackHelper.performSelectionHaptic(view, haptic)
                     isTimerRunning = !isTimerRunning
                 },
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(58.dp)
                     .clip(CircleShape)
-                    .background(RoyalBlue)
+                    .background(colors.accent)
                     .testTag("zen_play_pause_button")
             ) {
                 Icon(
@@ -308,31 +331,35 @@ fun ZenFocusModeScreen(
                 )
             }
 
-            // +5 min
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(12.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
                     .clickable {
                         secondsRemaining += 300
                         initialDuration += 300
                         HapticFeedbackHelper.performSelectionHaptic(view, haptic)
                     }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                Text("+5m", style = MaterialTheme.typography.labelMedium, color = SlateGraphite)
+                Text(
+                    text = "+5m",
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = JetBrainsMonoFontFamily),
+                    color = colors.secondaryInk,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(22.dp))
 
         // Subtasks Checklist Section
         if (task.subtasks.isNotEmpty()) {
             Text(
                 text = "SUBTASKS (${task.subtasks.count { it.isCompleted }}/${task.subtasks.size})",
-                style = MaterialTheme.typography.labelSmall,
-                color = SlateGraphite,
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
+                color = colors.secondaryInk,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
                 modifier = Modifier.fillMaxWidth()
@@ -351,8 +378,8 @@ fun ZenFocusModeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(PaperSurface)
-                            .border(1.dp, HairlineBorder, RoundedCornerShape(10.dp))
+                            .background(colors.surface)
+                            .border(1.dp, colors.border, RoundedCornerShape(10.dp))
                             .clickable {
                                 HapticFeedbackHelper.performSubtaskToggleHaptic(view, haptic)
                                 onToggleSubtask(subtask.id)
@@ -373,7 +400,7 @@ fun ZenFocusModeScreen(
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else TextDecoration.None
                             ),
-                            color = if (subtask.isCompleted) SlateGraphite else ObsidianBlack
+                            color = if (subtask.isCompleted) colors.secondaryInk else colors.primaryInk
                         )
                     }
                 }
@@ -388,6 +415,7 @@ fun ZenFocusModeScreen(
         Button(
             onClick = {
                 HapticFeedbackHelper.performTaskCompletionHaptic(view, haptic)
+                flushFocusLog()
                 onCompleteTask()
                 onExit()
             },
@@ -395,20 +423,23 @@ fun ZenFocusModeScreen(
                 .fillMaxWidth()
                 .height(52.dp)
                 .testTag("zen_complete_task_button"),
-            colors = ButtonDefaults.buttonColors(containerColor = ObsidianBlack),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = colors.primaryInk,
+                contentColor = colors.canvas
+            ),
             shape = RoundedCornerShape(14.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = "Complete Task",
-                tint = Color.White,
+                tint = colors.canvas,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "Complete Task & Exit Zen",
                 style = MaterialTheme.typography.labelLarge,
-                color = Color.White,
+                color = colors.canvas,
                 fontWeight = FontWeight.Bold
             )
         }

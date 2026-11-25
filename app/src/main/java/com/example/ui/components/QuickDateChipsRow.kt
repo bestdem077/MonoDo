@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
@@ -27,8 +25,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,15 +43,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.FocusedBackground
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.ObsidianBlack
-import com.example.ui.theme.PaperCanvas
-import com.example.ui.theme.PaperSurface
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.RoyalBlueSoft
-import com.example.ui.theme.SlateGraphite
+import com.example.ui.theme.MonoDoThemeTokens
 import com.example.ui.util.HapticFeedbackHelper
+import com.example.ui.util.LocalDayUtils
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -74,12 +64,8 @@ object QuickDateCalculator {
             timeInMillis = baseTimeMillis
         }
         when (preset) {
-            QuickDeadlinePreset.TODAY -> {
-                // Keep today's date
-            }
-            QuickDeadlinePreset.TOMORROW -> {
-                cal.add(Calendar.DAY_OF_YEAR, 1)
-            }
+            QuickDeadlinePreset.TODAY -> Unit
+            QuickDeadlinePreset.TOMORROW -> cal.add(Calendar.DAY_OF_YEAR, 1)
             QuickDeadlinePreset.THIS_WEEKEND -> {
                 val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
                 val daysUntilSaturday = (Calendar.SATURDAY - dayOfWeek + 7) % 7
@@ -100,17 +86,10 @@ object QuickDateCalculator {
 
     fun isSameCalendarDay(timestampA: Long?, timestampB: Long?): Boolean {
         if (timestampA == null || timestampB == null) return false
-        val c1 = Calendar.getInstance().apply { timeInMillis = timestampA }
-        val c2 = Calendar.getInstance().apply { timeInMillis = timestampB }
-        return c1.get(Calendar.YEAR) == c2.get(Calendar.YEAR) &&
-                c1.get(Calendar.DAY_OF_YEAR) == c2.get(Calendar.DAY_OF_YEAR)
+        return LocalDayUtils.toLocalEpochDay(timestampA) == LocalDayUtils.toLocalEpochDay(timestampB)
     }
 }
 
-/**
- * Row of 'Today', 'Tomorrow', 'This Weekend', and 'Next Week' clickable chips
- * placed directly below the task input field to quickly set task deadlines.
- */
 @Composable
 fun QuickDateChipsRow(
     selectedDueDate: Long?,
@@ -118,9 +97,11 @@ fun QuickDateChipsRow(
     onCustomDateClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val colors = MonoDoThemeTokens.colors
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     val scrollState = rememberScrollState()
+    val todayKey = LocalDayUtils.toLocalEpochDay()
 
     Row(
         modifier = modifier
@@ -131,23 +112,23 @@ fun QuickDateChipsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         QuickDeadlinePreset.entries.forEach { preset ->
-            val targetTimestamp = remember(preset) {
+            val targetTimestamp = remember(preset, todayKey) {
                 QuickDateCalculator.getDeadlineTimestamp(preset)
             }
             val isSelected = QuickDateCalculator.isSameCalendarDay(selectedDueDate, targetTimestamp)
 
             val bgColor by animateColorAsState(
-                targetValue = if (isSelected) RoyalBlue else PaperCanvas,
+                targetValue = if (isSelected) colors.accent else colors.canvas,
                 animationSpec = spring(),
                 label = "quickChipBg"
             )
             val borderColor by animateColorAsState(
-                targetValue = if (isSelected) RoyalBlue else HairlineBorder,
+                targetValue = if (isSelected) colors.accent else colors.border,
                 animationSpec = spring(),
                 label = "quickChipBorder"
             )
             val textColor by animateColorAsState(
-                targetValue = if (isSelected) Color.White else ObsidianBlack,
+                targetValue = if (isSelected) Color.White else colors.primaryInk,
                 animationSpec = spring(),
                 label = "quickChipText"
             )
@@ -160,11 +141,7 @@ fun QuickDateChipsRow(
                     .clickable {
                         HapticFeedbackHelper.performSelectionHaptic(view, haptic)
                         val freshTimestamp = QuickDateCalculator.getDeadlineTimestamp(preset)
-                        if (isSelected) {
-                            onDueDateChange(null)
-                        } else {
-                            onDueDateChange(freshTimestamp)
-                        }
+                        if (isSelected) onDueDateChange(null) else onDueDateChange(freshTimestamp)
                     }
                     .padding(horizontal = 13.dp, vertical = 7.dp)
                     .testTag("quick_date_chip_${preset.tagSuffix}"),
@@ -192,10 +169,10 @@ fun QuickDateChipsRow(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(if (isCustomSelected) RoyalBlueSoft else PaperCanvas)
+                    .background(if (isCustomSelected) colors.accentSoft else colors.canvas)
                     .border(
                         1.dp,
-                        if (isCustomSelected) RoyalBlue else HairlineBorder,
+                        if (isCustomSelected) colors.accent else colors.border,
                         RoundedCornerShape(999.dp)
                     )
                     .clickable {
@@ -210,14 +187,14 @@ fun QuickDateChipsRow(
                     Icon(
                         imageVector = Icons.Default.CalendarToday,
                         contentDescription = "Pick Custom Date",
-                        tint = if (selectedDueDate != null) RoyalBlue else SlateGraphite,
+                        tint = if (selectedDueDate != null) colors.accent else colors.secondaryInk,
                         modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = if (selectedDueDate != null) sdf.format(Date(selectedDueDate)) else "Custom",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (selectedDueDate != null) RoyalBlue else SlateGraphite,
+                        color = if (selectedDueDate != null) colors.accent else colors.secondaryInk,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 11.sp
                     )
@@ -232,31 +209,27 @@ fun QuickDateChipsRow(
                     onDueDateChange(null)
                 },
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(34.dp)
                     .testTag("clear_quick_date_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Clear Date",
-                    tint = SlateGraphite,
-                    modifier = Modifier.size(14.dp)
+                    tint = colors.secondaryInk,
+                    modifier = Modifier.size(15.dp)
                 )
             }
         }
     }
 }
 
-/**
- * Inline Quick-Add Task Card for the main Tasks screen featuring the task input field
- * and the row of 'Today', 'Tomorrow', 'This Weekend', and 'Next Week' clickable chips
- * directly below the input field.
- */
 @Composable
 fun InlineQuickAddTaskBar(
     selectedCategory: String,
     onQuickCreateTask: (title: String, dueDate: Long?, category: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = MonoDoThemeTokens.colors
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
@@ -281,8 +254,8 @@ fun InlineQuickAddTaskBar(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(PaperSurface)
-            .border(1.dp, HairlineBorder, RoundedCornerShape(16.dp))
+            .background(colors.surface)
+            .border(1.dp, colors.border, RoundedCornerShape(16.dp))
             .padding(14.dp)
             .testTag("inline_quick_add_task_bar")
     ) {
@@ -290,36 +263,17 @@ fun InlineQuickAddTaskBar(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
+            CompactFormTextField(
                 value = quickTitle,
                 onValueChange = { quickTitle = it },
-                placeholder = {
-                    Text(
-                        text = "Quick add a task...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SlateGraphite
-                    )
-                },
+                placeholder = "Quick add a task...",
                 singleLine = true,
+                fontWeight = FontWeight.SemiBold,
+                imeAction = ImeAction.Done,
+                onImeAction = { submitQuickTask() },
                 modifier = Modifier
                     .weight(1f)
-                    .testTag("inline_task_input_field"),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = ObsidianBlack,
-                    fontWeight = FontWeight.SemiBold
-                ),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = ObsidianBlack,
-                    unfocusedTextColor = ObsidianBlack,
-                    cursorColor = RoyalBlue,
-                    focusedBorderColor = RoyalBlue,
-                    unfocusedBorderColor = HairlineBorder,
-                    focusedContainerColor = FocusedBackground,
-                    unfocusedContainerColor = PaperCanvas
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitQuickTask() })
+                    .testTag("inline_task_input_field")
             )
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -328,12 +282,12 @@ fun InlineQuickAddTaskBar(
                 onClick = submitQuickTask,
                 enabled = quickTitle.isNotBlank(),
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(44.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (quickTitle.isNotBlank()) RoyalBlue else PaperCanvas)
+                    .background(if (quickTitle.isNotBlank()) colors.accent else colors.canvas)
                     .border(
                         1.dp,
-                        if (quickTitle.isNotBlank()) RoyalBlue else HairlineBorder,
+                        if (quickTitle.isNotBlank()) colors.accent else colors.border,
                         RoundedCornerShape(12.dp)
                     )
                     .testTag("inline_quick_add_submit_button")
@@ -341,7 +295,7 @@ fun InlineQuickAddTaskBar(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Add Task",
-                    tint = if (quickTitle.isNotBlank()) Color.White else SlateGraphite,
+                    tint = if (quickTitle.isNotBlank()) Color.White else colors.secondaryInk,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -349,7 +303,6 @@ fun InlineQuickAddTaskBar(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Row of 'Today', 'Tomorrow', 'This Weekend', and 'Next Week' clickable chips below the task input field
         QuickDateChipsRow(
             selectedDueDate = quickDueDate,
             onDueDateChange = { quickDueDate = it }

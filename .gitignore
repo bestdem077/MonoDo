@@ -16,3 +16,8 @@
 local.properties
 .env
 debug.keystore
+.aistudio/
+.build-outputs/
+.template/
+/icon-preview.html
+

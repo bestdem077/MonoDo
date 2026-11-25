@@ -1,8 +1,13 @@
 package com.example.ui.screens
 
+import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -32,8 +37,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
@@ -44,8 +49,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -62,23 +65,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.R
-import com.example.ui.theme.DateTileBackground
-import com.example.ui.theme.FocusedBackground
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.ObsidianBlack
-import com.example.ui.theme.PaperCanvas
-import com.example.ui.theme.PaperSurface
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.RoyalBlueSoft
-import com.example.ui.theme.SlateGraphite
+import com.example.ui.components.CompactFormTextField
+import com.example.ui.theme.MonoDoThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -100,6 +97,7 @@ fun MonoDoOnboardingScreen(
         reminderMinute: Int
     ) -> Unit
 ) {
+    val colors = MonoDoThemeTokens.colors
     val context = LocalContext.current
     var currentStep by remember { mutableIntStateOf(0) } // 0: Name, 1: Date of Birth, 2: Reminder Time
 
@@ -113,7 +111,23 @@ fun MonoDoOnboardingScreen(
     var reminderHour by remember { mutableIntStateOf(initialReminderHour) }
     var reminderMinute by remember { mutableIntStateOf(initialReminderMinute) }
 
-    // Intercept back button when past step 0
+    val finishOnboarding = { reminderGranted: Boolean ->
+        onComplete(
+            nameInput.trim(),
+            birthDateText.trim(),
+            birthTimestamp,
+            isReminderEnabled && reminderGranted,
+            reminderHour,
+            reminderMinute
+        )
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        finishOnboarding(granted)
+    }
+
     BackHandler(enabled = currentStep > 0) {
         currentStep -= 1
     }
@@ -123,7 +137,7 @@ fun MonoDoOnboardingScreen(
         if (birthTimestamp > 0) cal.timeInMillis = birthTimestamp
         else cal.add(Calendar.YEAR, -24)
 
-        val dialog = DatePickerDialog(
+        DatePickerDialog(
             context,
             { _, year, month, day ->
                 val chosen = Calendar.getInstance().apply {
@@ -136,12 +150,11 @@ fun MonoDoOnboardingScreen(
             cal.get(Calendar.YEAR),
             cal.get(Calendar.MONTH),
             cal.get(Calendar.DAY_OF_MONTH)
-        )
-        dialog.show()
+        ).show()
     }
 
     val showTimePicker = {
-        val dialog = TimePickerDialog(
+        TimePickerDialog(
             context,
             { _, hour, minute ->
                 reminderHour = hour
@@ -150,15 +163,14 @@ fun MonoDoOnboardingScreen(
             reminderHour,
             reminderMinute,
             false
-        )
-        dialog.show()
+        ).show()
     }
 
     Surface(
         modifier = Modifier
             .fillMaxSize()
             .testTag("monodo_onboarding_screen"),
-        color = PaperCanvas
+        color = colors.canvas
     ) {
         Column(
             modifier = Modifier
@@ -177,20 +189,19 @@ fun MonoDoOnboardingScreen(
                     .fillMaxWidth()
                     .padding(top = 28.dp)
             ) {
-                // Emboldened MonoDo Emblem Vector Logo
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
-                        .shadow(elevation = 8.dp, shape = CircleShape, spotColor = RoyalBlue.copy(alpha = 0.25f))
-                        .clip(CircleShape)
-                        .background(PaperSurface)
-                        .border(1.5.dp, HairlineBorder, CircleShape),
+                        .size(84.dp)
+                        .shadow(elevation = 10.dp, shape = RoundedCornerShape(24.dp), spotColor = colors.accent.copy(alpha = 0.28f))
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(1.5.dp, colors.border, RoundedCornerShape(24.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_monodo_logo),
+                        painter = painterResource(id = R.drawable.ic_monodo_obsidian_mark),
                         contentDescription = "MonoDo Emblem",
-                        modifier = Modifier.size(54.dp)
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
 
@@ -200,24 +211,22 @@ fun MonoDoOnboardingScreen(
                     text = "MonoDo",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Black,
-                    color = ObsidianBlack,
+                    color = colors.primaryInk,
                     letterSpacing = (-0.5).sp
                 )
 
                 Text(
                     text = "Minimalist Workspace",
                     style = MaterialTheme.typography.bodySmall,
-                    color = SlateGraphite,
+                    color = colors.secondaryInk,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = 1.sp
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Smooth Step Indicators (3 steps)
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.55f),
+                    modifier = Modifier.fillMaxWidth(0.55f),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     repeat(3) { stepIndex ->
@@ -230,9 +239,9 @@ fun MonoDoOnboardingScreen(
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(
                                     when {
-                                        isActive -> RoyalBlue
-                                        isDone -> ObsidianBlack
-                                        else -> HairlineBorder
+                                        isActive -> colors.accent
+                                        isDone -> colors.primaryInk
+                                        else -> colors.border
                                     }
                                 )
                         )
@@ -242,13 +251,13 @@ fun MonoDoOnboardingScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Main Step Content Card with Animated Transitions
+            // Main Step Content Card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(PaperSurface)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(24.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(24.dp))
                     .padding(24.dp)
             ) {
                 AnimatedContent(
@@ -315,18 +324,19 @@ fun MonoDoOnboardingScreen(
                                     currentStep = 1
                                 }
                             }
-                            1 -> {
-                                currentStep = 2
-                            }
+                            1 -> currentStep = 2
                             2 -> {
-                                onComplete(
-                                    nameInput.trim(),
-                                    birthDateText.trim(),
-                                    birthTimestamp,
-                                    isReminderEnabled,
-                                    reminderHour,
-                                    reminderMinute
-                                )
+                                val needsNotifPerm = isReminderEnabled &&
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    ) != PackageManager.PERMISSION_GRANTED
+                                if (needsNotifPerm) {
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    finishOnboarding(true)
+                                }
                             }
                         }
                     },
@@ -336,12 +346,12 @@ fun MonoDoOnboardingScreen(
                         .shadow(
                             elevation = 8.dp,
                             shape = RoundedCornerShape(27.dp),
-                            spotColor = RoyalBlue.copy(alpha = 0.35f)
+                            spotColor = colors.accent.copy(alpha = 0.35f)
                         )
                         .testTag("onboarding_continue_btn"),
                     shape = RoundedCornerShape(27.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = RoyalBlue,
+                        containerColor = colors.accent,
                         contentColor = Color.White
                     )
                 ) {
@@ -357,7 +367,7 @@ fun MonoDoOnboardingScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
-                            imageVector = if (currentStep == 2) Icons.Default.Check else Icons.Default.ArrowForward,
+                            imageVector = if (currentStep == 2) Icons.Default.Check else Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(18.dp)
@@ -367,7 +377,6 @@ fun MonoDoOnboardingScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 100% Offline Privacy Reassurance
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
@@ -375,14 +384,14 @@ fun MonoDoOnboardingScreen(
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = "Offline Lock",
-                        tint = SlateGraphite,
+                        tint = colors.secondaryInk,
                         modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "100% Offline • Kept securely on your device",
                         style = MaterialTheme.typography.labelSmall,
-                        color = SlateGraphite,
+                        color = colors.secondaryInk,
                         fontWeight = FontWeight.Medium,
                         fontSize = 11.sp
                     )
@@ -398,6 +407,7 @@ private fun NameStep(
     onNameChange: (String) -> Unit,
     isError: Boolean
 ) {
+    val colors = MonoDoThemeTokens.colors
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.Start
@@ -407,13 +417,13 @@ private fun NameStep(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(RoyalBlueSoft),
+                    .background(colors.accentSoft),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = null,
-                    tint = RoyalBlue,
+                    tint = colors.accent,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -422,7 +432,7 @@ private fun NameStep(
                 text = "Welcome to MonoDo",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = ObsidianBlack
+                color = colors.primaryInk
             )
         }
 
@@ -431,13 +441,13 @@ private fun NameStep(
         Text(
             text = "What is your name? We'll personalize your daily workspace and progress cards.",
             style = MaterialTheme.typography.bodyMedium,
-            color = SlateGraphite,
+            color = colors.secondaryInk,
             lineHeight = 20.sp
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        com.example.ui.components.CompactFormTextField(
+        CompactFormTextField(
             value = name,
             onValueChange = onNameChange,
             placeholder = "Enter your name",
@@ -454,7 +464,7 @@ private fun NameStep(
             Text(
                 text = "Please enter your name to personalize your workspace",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
+                color = colors.danger
             )
         }
     }
@@ -465,6 +475,7 @@ private fun BirthDateStep(
     birthDateText: String,
     onPickDate: () -> Unit
 ) {
+    val colors = MonoDoThemeTokens.colors
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.Start
@@ -474,13 +485,13 @@ private fun BirthDateStep(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(RoyalBlueSoft),
+                    .background(colors.accentSoft),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Cake,
                     contentDescription = null,
-                    tint = RoyalBlue,
+                    tint = colors.accent,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -489,7 +500,7 @@ private fun BirthDateStep(
                 text = "When is your birthday?",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = ObsidianBlack
+                color = colors.primaryInk
             )
         }
 
@@ -498,19 +509,18 @@ private fun BirthDateStep(
         Text(
             text = "Used to celebrate your milestones and tailor your productivity cycle.",
             style = MaterialTheme.typography.bodyMedium,
-            color = SlateGraphite,
+            color = colors.secondaryInk,
             lineHeight = 20.sp
         )
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Date Picker Trigger Card
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(PaperCanvas)
-                .border(1.dp, HairlineBorder, RoundedCornerShape(14.dp))
+                .background(colors.canvas)
+                .border(1.dp, colors.border, RoundedCornerShape(14.dp))
                 .clickable { onPickDate() }
                 .padding(horizontal = 16.dp, vertical = 14.dp)
                 .testTag("onboarding_dob_picker"),
@@ -521,14 +531,14 @@ private fun BirthDateStep(
                 Icon(
                     imageVector = Icons.Default.CalendarMonth,
                     contentDescription = "Choose Date",
-                    tint = if (birthDateText.isNotBlank()) RoyalBlue else SlateGraphite,
+                    tint = if (birthDateText.isNotBlank()) colors.accent else colors.secondaryInk,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = if (birthDateText.isNotBlank()) birthDateText else "Select date of birth",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (birthDateText.isNotBlank()) ObsidianBlack else SlateGraphite,
+                    color = if (birthDateText.isNotBlank()) colors.primaryInk else colors.secondaryInk,
                     fontWeight = if (birthDateText.isNotBlank()) FontWeight.SemiBold else FontWeight.Normal
                 )
             }
@@ -536,13 +546,13 @@ private fun BirthDateStep(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(DateTileBackground)
+                    .background(colors.tileBg)
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Text(
                     text = if (birthDateText.isNotBlank()) "Change" else "Choose",
                     style = MaterialTheme.typography.labelSmall,
-                    color = RoyalBlue,
+                    color = colors.accent,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -559,6 +569,7 @@ private fun ReminderStep(
     onPickTime: () -> Unit,
     onSelectPreset: (hour: Int, minute: Int) -> Unit
 ) {
+    val colors = MonoDoThemeTokens.colors
     val presets = listOf(
         Triple("Morning", 8, 0),
         Triple("Focus Start", 9, 0),
@@ -575,51 +586,50 @@ private fun ReminderStep(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(RoyalBlueSoft),
+                    .background(colors.accentSoft),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.NotificationsActive,
                     contentDescription = null,
-                    tint = RoyalBlue,
+                    tint = colors.accent,
                     modifier = Modifier.size(20.dp)
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "Daily Reminder",
+                text = "Daily Morning Briefing",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = ObsidianBlack
+                color = colors.primaryInk
             )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            text = "Stay consistent with a single distraction-free daily prompt.",
+            text = "Get one clean, expandable daily agenda of your overdue and today's tasks. You can also set exact reminder times on any individual task.",
             style = MaterialTheme.typography.bodyMedium,
-            color = SlateGraphite,
+            color = colors.secondaryInk,
             lineHeight = 20.sp
         )
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Toggle row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(PaperCanvas)
-                .border(1.dp, HairlineBorder, RoundedCornerShape(14.dp))
+                .background(colors.canvas)
+                .border(1.dp, colors.border, RoundedCornerShape(14.dp))
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Enable Daily Prompt",
+                text = "Enable Daily Briefing",
                 style = MaterialTheme.typography.bodyMedium,
-                color = ObsidianBlack,
+                color = colors.primaryInk,
                 fontWeight = FontWeight.SemiBold
             )
 
@@ -628,31 +638,29 @@ private fun ReminderStep(
                 onCheckedChange = onReminderToggle,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = RoyalBlue,
-                    uncheckedThumbColor = SlateGraphite,
-                    uncheckedTrackColor = DateTileBackground
+                    checkedTrackColor = colors.accent,
+                    uncheckedThumbColor = colors.secondaryInk,
+                    uncheckedTrackColor = colors.tileBg
                 )
             )
         }
 
         AnimatedVisibility(visible = isReminderEnabled) {
             Column(modifier = Modifier.padding(top = 16.dp)) {
-                // Time Card Trigger
                 val formattedTime = remember(reminderHour, reminderMinute) {
                     val cal = Calendar.getInstance().apply {
                         set(Calendar.HOUR_OF_DAY, reminderHour)
                         set(Calendar.MINUTE, reminderMinute)
                     }
-                    val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
-                    sdf.format(cal.time)
+                    SimpleDateFormat("h:mm a", Locale.getDefault()).format(cal.time)
                 }
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(PaperCanvas)
-                        .border(1.dp, HairlineBorder, RoundedCornerShape(14.dp))
+                        .background(colors.canvas)
+                        .border(1.dp, colors.border, RoundedCornerShape(14.dp))
                         .clickable { onPickTime() }
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                         .testTag("onboarding_reminder_time_picker"),
@@ -663,7 +671,7 @@ private fun ReminderStep(
                         Icon(
                             imageVector = Icons.Default.Alarm,
                             contentDescription = "Time",
-                            tint = RoyalBlue,
+                            tint = colors.accent,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -671,20 +679,20 @@ private fun ReminderStep(
                             text = formattedTime,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = ObsidianBlack
+                            color = colors.primaryInk
                         )
                     }
 
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(DateTileBackground)
+                            .background(colors.tileBg)
                             .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Text(
                             text = "Set Custom",
                             style = MaterialTheme.typography.labelSmall,
-                            color = RoyalBlue,
+                            color = colors.accent,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -692,7 +700,6 @@ private fun ReminderStep(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Presets
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -703,10 +710,10 @@ private fun ReminderStep(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSelected) ObsidianBlack else PaperCanvas)
+                                .background(if (isSelected) colors.primaryInk else colors.canvas)
                                 .border(
                                     1.dp,
-                                    if (isSelected) ObsidianBlack else HairlineBorder,
+                                    if (isSelected) colors.primaryInk else colors.border,
                                     RoundedCornerShape(10.dp)
                                 )
                                 .clickable { onSelectPreset(h, m) }
@@ -716,7 +723,7 @@ private fun ReminderStep(
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (isSelected) Color.White else SlateGraphite,
+                                color = if (isSelected) colors.canvas else colors.secondaryInk,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 fontSize = 10.sp
                             )

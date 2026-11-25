@@ -22,19 +22,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.DateTileBackground
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.ObsidianBlack
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.SlateGraphite
+import com.example.ui.theme.MonoDoThemeTokens
 
 @Composable
 fun EmptyTasksView(
     hasActiveFilters: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val colors = MonoDoThemeTokens.colors
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -43,29 +42,17 @@ fun EmptyTasksView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Minimalist Zen Circle with delicate Royal Blue check icon
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(DateTileBackground)
-                .border(1.dp, HairlineBorder, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.CheckCircleOutline,
-                contentDescription = null,
-                tint = RoyalBlue,
-                modifier = Modifier.size(32.dp)
-            )
-        }
+        SwissEmptyStateArt(
+            type = SwissEmptyArtType.TASKS,
+            size = 92.dp
+        )
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            text = if (hasActiveFilters) "No matching tasks" else "All tasks complete",
+            text = if (hasActiveFilters) "No matching tasks" else "Your workspace is clear",
             style = MaterialTheme.typography.titleMedium,
-            color = ObsidianBlack,
+            color = colors.primaryInk,
             fontWeight = FontWeight.Bold,
             letterSpacing = (-0.3).sp
         )
@@ -74,13 +61,13 @@ fun EmptyTasksView(
 
         Text(
             text = if (hasActiveFilters) {
-                "Try switching categories or clearing search"
+                "Try switching categories or clearing filters"
             } else {
-                "Enjoy your focus or tap + below to add a task"
+                "Tap the + button below to add your first task"
             },
             style = MaterialTheme.typography.bodyMedium,
-            color = SlateGraphite,
-            fontWeight = FontWeight.Normal
+            color = colors.secondaryInk,
+            textAlign = TextAlign.Center
         )
     }
 }

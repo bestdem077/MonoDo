@@ -100,7 +100,34 @@ jobs:
             chmod +x ./gradlew
           fi
 
+      - name: Resolve Version Tag & Build Metadata
+        id: resolve_version
+        run: |
+          BUILD_NUM="${{ github.run_number }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          BASE_VERSION=$(grep 'val baseVersionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "2.1.0")
+          BASE_CODE=$(grep 'val baseVersionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "10")
+          VERSION_CODE=$((BASE_CODE + BUILD_NUM))
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION_TAG="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION_TAG="v${BASE_VERSION}.${BUILD_NUM}"
+          fi
+
+          echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "BASE_VERSION=${BASE_VERSION}" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=${VERSION_CODE}" >> $GITHUB_OUTPUT
+          echo "BUILD_NUM=${BUILD_NUM}" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_OUTPUT
+
       - name: Build Debug APK
+        env:
+          MONODO_RELEASE_TAG: ${{ steps.resolve_version.outputs.VERSION_TAG }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           if [ -f ./gradlew ]; then
             ./gradlew assembleDebug --stacktrace
@@ -111,20 +138,12 @@ jobs:
       - name: Process Versioning and Artifacts
         id: prepare_files
         run: |
-          BUILD_NUM="${{ github.run_number }}"
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
-
-          # Extract base version from app/build.gradle.kts
-          BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "2.0.1")
-          VERSION_CODE=$(grep 'versionCode = ' app/build.gradle.kts | head -n 1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || echo "4")
-
-          # Dynamic Version Resolution
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION_TAG="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION_TAG="v${BASE_VERSION}.${BUILD_NUM}"
-          fi
+          VERSION_TAG="${{ steps.resolve_version.outputs.VERSION_TAG }}"
+          BASE_VERSION="${{ steps.resolve_version.outputs.BASE_VERSION }}"
+          VERSION_CODE="${{ steps.resolve_version.outputs.VERSION_CODE }}"
+          BUILD_NUM="${{ steps.resolve_version.outputs.BUILD_NUM }}"
+          SHORT_SHA="${{ steps.resolve_version.outputs.SHORT_SHA }}"
+          BUILD_DATE="${{ steps.resolve_version.outputs.BUILD_DATE }}"
 
           echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
           echo "BASE_VERSION=${BASE_VERSION}" >> $GITHUB_OUTPUT
@@ -158,70 +177,55 @@ jobs:
       - name: Generate Professional Release Notes
         id: release_notes
         run: |
-          VERSION_TAG="${{ steps.prepare_files.outputs.VERSION_TAG }}"
-          BUILD_DATE="${{ steps.prepare_files.outputs.BUILD_DATE }}"
-          SHORT_SHA="${{ steps.prepare_files.outputs.SHORT_SHA }}"
-          APK_SIZE="${{ steps.prepare_files.outputs.APK_SIZE }}"
-          APK_SHA256="${{ steps.prepare_files.outputs.APK_SHA256 }}"
-          CUSTOM_NOTES="${{ github.event.inputs.release_notes || 'Automated production build generated via GitHub Actions.' }}"
+          RECENT_CHANGES=$(git log -n 5 --pretty=format:"* %s" 2>/dev/null || echo "* Performance improvements and refinements")
 
           cat << 'EOF' > RELEASE_BODY.md
-          ## 🖤 MonoDo — Minimalist Task & Focus Workspace
+          ## MonoDo — Minimalist Offline Task, Habit & Focus Workspace
 
-          > **Crafted with focus & elegance by Vishal Dhangar**  
-          > A distraction-free, 100% offline personal task manager, habit tracker, and focus workspace with Swiss paper minimalism and Royal Blue accents.
+          > **Crafted by Vishal Dhangar**  
+          > 100% offline, privacy-first personal workspace with Swiss paper minimalism and Royal Blue accents. Installs directly over previous MonoDo builds without losing your data.
 
           ---
 
-          ### 📊 Build Information & Telemetry
+          ### What's New in ${{ steps.prepare_files.outputs.VERSION_TAG }}
+
+          EOF
+
+          printf '%s\n' "$RECENT_CHANGES" >> RELEASE_BODY.md
+
+          cat << 'EOF' >> RELEASE_BODY.md
+
+          ---
+
+          ### Build Information
 
           | Specification | Details |
           |---|---|
-          | **Release Version** | `${{ steps.prepare_files.outputs.VERSION_TAG }}` (Base `v${{ steps.prepare_files.outputs.BASE_VERSION }}`, Code `${{ steps.prepare_files.outputs.VERSION_CODE }}`) |
+          | **Release Version** | `${{ steps.prepare_files.outputs.VERSION_TAG }}` (Code `${{ steps.prepare_files.outputs.VERSION_CODE }}`) |
           | **Build Run** | `#${{ steps.prepare_files.outputs.BUILD_NUM }}` |
-          | **Commit Reference** | `${{ steps.prepare_files.outputs.SHORT_SHA }}` (`${{ github.sha }}`) |
+          | **Commit** | `${{ steps.prepare_files.outputs.SHORT_SHA }}` |
           | **Package Size** | `${{ steps.prepare_files.outputs.APK_SIZE }}` |
           | **Build Timestamp** | `${{ steps.prepare_files.outputs.BUILD_DATE }}` |
-          | **Compatibility** | Android 7.0+ (API 24 to 36) |
-          | **Architecture** | Universal APK (arm64-v8a, armeabi-v7a, x86_64) |
-          | **Author & Maintainer** | **Vishal Dhangar** |
+          | **Package ID** | `com.aistudio.monodo.kxmpzq` (In-place upgrade safe) |
 
           ---
 
-          ### 🌟 Key Features in this Major Release (v2.0.0)
-          
-          * **👆 Smooth Horizontal Swipe Gestures (`pointerInput`) with Haptics:** Swipe left-to-right on any task card to complete/reopen with a crisp haptic tick; swipe right-to-left to smoothly slide the card and reveal inline **Today**, **Tomorrow**, and **Delete** quick actions.
-          * **⚡ 1-Tap Quick Deadline Chips & Inline Quick-Add Bar:** Instant **`Today`**, **`Tomorrow`**, **`This Weekend`**, and **`Next Week`** chips directly below the task input field in both the Create Task sheet and the new inline Quick-Add bar on the Tasks screen.
-          * **🔵 Minimalist 7-Day Habit Dot Matrix Tracker:** Collapsible daily habit tracker with interactive 7-day completion dots and 1-tap starter habits (`Read 20m`, `Deep Work 2h`, `Gym`).
-          * **🧘 Zen Focus Mode (Single-Task Fullscreen Canvas):** Long-press any task or tap the `Focus` pill to enter a distraction-free single-task canvas with an integrated countdown timer and interactive subtask checklist.
-          * **🗂️ Smart Sorting & Filtering Sheet + Custom Categories:** Smooth modal bottom sheet to sort tasks by Priority, Due Date, Creation Date, or Alphabetical, plus a custom category creator with semantic palette accent dots.
-          * **💮 Swiss Ink-Stamp Celebration (`DAY COMPLETE • 100%`):** Geometric ink-stamp badge with spring animation and haptic pulse when all daily tasks are completed.
-          * **💾 1-Tap Offline Backup & Restore (`.json`):** Export and import full JSON backups (tasks, notes, habits, and custom categories) directly to device storage with zero cloud dependency.
-          * **📱 Minimalist Home Screen Widget (`MonoDo Today`):** Paper-styled Android home screen widget showing your top 3 priority tasks with direct checkoff and in-app live preview.
-          * **📝 Local Notes Workspace & One-Time Setup Guarantee:** Room-backed notes manager (v6 schema) and synchronous one-time onboarding that never interrupts your workflow.
+          ### Download Assets
+
+          * **[MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.prepare_files.outputs.VERSION_TAG }}/MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk)** — Versioned APK
+          * **[MonoDo-latest.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.prepare_files.outputs.VERSION_TAG }}/MonoDo-latest.apk)** — Latest Stable APK
 
           ---
 
-          ### 📥 Download Assets
+          ### Installation Guide for Android Devices
 
-          * 🔗 **[MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.prepare_files.outputs.VERSION_TAG }}/MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk)** — Direct Versioned APK
-          * 🔗 **[MonoDo-latest.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.prepare_files.outputs.VERSION_TAG }}/MonoDo-latest.apk)** — Always points to the newest stable release
-
-          ---
-
-          ### 📲 Installation Guide for Android Devices
-
-          1. **Download:** Tap either **`MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk`** or **`MonoDo-latest.apk`** under the **Assets** section below.
-          2. **⚠️ IMPORTANT NOTE (If updating from a previous version):**  
-             * If your phone shows *"App not installed / Something went wrong"*, **first uninstall any old test version** from your phone (`Settings > Apps > MonoDo > Uninstall`). This is Android's standard security rule for signature verification.
-          3. **Play Protect Prompt:**  
-             * When prompted by Google Play Protect, tap **"More details"** ➔ **"Install anyway (unsafe)"**.  
-             *(This appears because the APK is an open-source build directly from GitHub and not distributed through the Play Store).*
-          4. **Enjoy MonoDo:** Open the app and start organizing with total focus!
+          1. **In-App Update (Recommended):** Open MonoDo -> Settings -> **App Updates** -> tap **Download & Install**.
+          2. **Manual Download:** Or tap **`MonoDo-${{ steps.prepare_files.outputs.VERSION_TAG }}.apk`** / **`MonoDo-latest.apk`** below.
+          3. **Data Safe:** Uses the same package ID and signing key, so your tasks, notes, habits, and birthdays stay intact.
 
           ---
 
-          ### 🔒 Integrity Checksum
+          ### Integrity Checksum
 
           ```text
           SHA-256: ${{ steps.prepare_files.outputs.APK_SHA256 }}

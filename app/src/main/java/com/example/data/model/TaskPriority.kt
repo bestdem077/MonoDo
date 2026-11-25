@@ -1,6 +1,7 @@
 package com.example.data.model
 
 import androidx.compose.ui.graphics.Color
+import com.example.ui.theme.MonoDoColors
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.PriorityHighBackground
 import com.example.ui.theme.PriorityHighIcon
@@ -39,4 +40,34 @@ enum class TaskPriority(
             MEDIUM -> ObsidianBlack
             HIGH -> Color.White
         }
+
+    fun indicatorColor(colors: MonoDoColors): Color = if (colors.isDark) {
+        when (this) {
+            LOW -> Color(0xFF6B7280)
+            MEDIUM -> Color(0xFFCBD5E1)
+            HIGH -> Color(0xFFFAFAFA)
+        }
+    } else {
+        monochromeIndicatorColor
+    }
+
+    fun badgeBackground(colors: MonoDoColors): Color = if (colors.isDark) {
+        when (this) {
+            LOW -> colors.tileBg
+            MEDIUM -> colors.surfaceVariant
+            HIGH -> colors.primaryInk
+        }
+    } else {
+        monochromeBackgroundColor
+    }
+
+    fun badgeTextColor(colors: MonoDoColors): Color = if (colors.isDark) {
+        when (this) {
+            LOW -> colors.secondaryInk
+            MEDIUM -> colors.primaryInk
+            HIGH -> colors.canvas
+        }
+    } else {
+        monochromeTextColor
+    }
 }

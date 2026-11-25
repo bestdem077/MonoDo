@@ -7,8 +7,9 @@
     android:background="@drawable/widget_background"
     android:padding="14dp">
 
-    <!-- Header -->
+    <!-- Header Row -->
     <LinearLayout
+        android:id="@+id/widget_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -17,114 +18,125 @@
 
         <ImageView
             android:id="@+id/widget_icon"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
             android:src="@drawable/ic_monodo_logo"
             android:contentDescription="@string/app_name" />
 
-        <TextView
-            android:id="@+id/widget_title"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="8dp"
-            android:text="MonoDo"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MonoDo"
+                android:textColor="#111111"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/widget_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TODAY • 0 pending"
+                android:textColor="#6B6B6B"
+                android:textSize="10sp"
+                android:maxLines="1" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/widget_refresh_btn"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="6dp"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_widget_refresh"
+            android:scaleType="centerInside"
+            android:padding="6dp"
+            android:contentDescription="Refresh Tasks" />
+
+        <LinearLayout
+            android:id="@+id/widget_add_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:background="@drawable/widget_add_pill"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="12dp">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:src="@drawable/ic_widget_add"
+                android:contentDescription="Add Task" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:text="Task"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Progress Strip -->
+    <ProgressBar
+        android:id="@+id/widget_progress"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginBottom="10dp"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/widget_progress_drawable" />
+
+    <!-- Scrollable Task List -->
+    <ListView
+        android:id="@+id/widget_task_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="6dp"
+        android:scrollbars="none" />
+
+    <!-- Empty State -->
+    <LinearLayout
+        android:id="@+id/widget_empty_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_empty_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="All clear for today"
             android:textColor="#111111"
             android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/widget_status"
+            android:id="@+id/widget_empty_sub"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="3 tasks"
-            android:textColor="#2563EB"
-            android:textSize="11sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <!-- Task Items (up to 3) -->
-    <LinearLayout
-        android:id="@+id/widget_task_1_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingVertical="4dp">
-
-        <ImageView
-            android:id="@+id/widget_task_1_check"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@drawable/ic_widget_check_circle"
-            android:contentDescription="Complete" />
-
-        <TextView
-            android:id="@+id/widget_task_1_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="No pending tasks"
-            android:textColor="#111111"
-            android:textSize="12sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/widget_task_2_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingVertical="4dp"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/widget_task_2_check"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@drawable/ic_widget_check_circle"
-            android:contentDescription="Complete" />
-
-        <TextView
-            android:id="@+id/widget_task_2_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="Task 2"
-            android:textColor="#111111"
-            android:textSize="12sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/widget_task_3_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingVertical="4dp"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/widget_task_3_check"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@drawable/ic_widget_check_circle"
-            android:contentDescription="Complete" />
-
-        <TextView
-            android:id="@+id/widget_task_3_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="Task 3"
-            android:textColor="#111111"
-            android:textSize="12sp"
-            android:maxLines="1"
-            android:ellipsize="end" />
+            android:layout_marginTop="2dp"
+            android:text="Tap + Task above to capture something new"
+            android:textColor="#6B6B6B"
+            android:textSize="11sp" />
     </LinearLayout>
 
 </LinearLayout>

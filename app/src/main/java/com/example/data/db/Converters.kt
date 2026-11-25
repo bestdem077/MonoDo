@@ -61,4 +61,19 @@ class Converters {
             TaskPriority.MEDIUM
         }
     }
+
+    @TypeConverter
+    fun fromTaskRecurrence(recurrence: com.example.data.model.TaskRecurrence?): String {
+        return (recurrence ?: com.example.data.model.TaskRecurrence.NONE).name
+    }
+
+    @TypeConverter
+    fun toTaskRecurrence(value: String?): com.example.data.model.TaskRecurrence {
+        return try {
+            if (value.isNullOrBlank()) com.example.data.model.TaskRecurrence.NONE
+            else com.example.data.model.TaskRecurrence.valueOf(value)
+        } catch (_: Exception) {
+            com.example.data.model.TaskRecurrence.NONE
+        }
+    }
 }

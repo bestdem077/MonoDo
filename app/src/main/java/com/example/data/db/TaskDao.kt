@@ -14,6 +14,12 @@ interface TaskDao {
     @Query("SELECT * FROM tasks ORDER BY createdAt DESC")
     fun getAllTasks(): Flow<List<TaskEntity>>
 
+    @Query("SELECT * FROM tasks WHERE isCompleted = 0")
+    suspend fun getActiveTasksSync(): List<TaskEntity>
+
+    @Query("SELECT * FROM tasks WHERE isCompleted = 0 AND reminderAt IS NOT NULL AND reminderAt > :nowMillis")
+    suspend fun getTasksWithFutureReminders(nowMillis: Long): List<TaskEntity>
+
     @Query("SELECT * FROM tasks WHERE id = :id LIMIT 1")
     suspend fun getTaskById(id: Long): TaskEntity?
 
@@ -40,4 +46,7 @@ interface TaskDao {
 
     @Query("SELECT COUNT(*) FROM tasks")
     suspend fun getTaskCount(): Int
+
+    @Query("SELECT COUNT(*) FROM tasks WHERE isCompleted = 0")
+    suspend fun getActiveTaskCount(): Int
 }

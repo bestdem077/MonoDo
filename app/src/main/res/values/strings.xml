@@ -2,7 +2,10 @@
     <string name="app_name">MonoDo</string>
     <string name="developer_name">Vishal D.</string>
     <string name="crafted_by">Created by Vishal D.</string>
-    <string name="app_version">Version 2.0.1</string>
+    <string name="app_version">Version 2.1.0</string>
     <string name="app_tagline">Minimalist Monochrome Task Manager</string>
-    <string name="widget_name">MonoDo Today</string>
+    <string name="widget_name">MonoDo Agenda List</string>
+    <string name="widget_agenda_description">Scrollable task list with 1-tap check-off, progress bar, and quick add</string>
+    <string name="widget_quick_name">MonoDo Focus Glance</string>
+    <string name="widget_quick_description">Compact next-task focus tile with daily stats and 1-tap New Task capture</string>
 </resources>

@@ -2,8 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:allowBackup="true"
@@ -18,6 +24,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.MyApplication">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -26,6 +33,33 @@
             </intent-filter>
         </activity>
 
+        <!-- Exact Alarm & Boot Recovery BroadcastReceiver -->
+        <receiver
+            android:name=".data.reminder.ReminderBroadcastReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+                <action android:name="com.example.monodo.ACTION_TASK_REMINDER" />
+                <action android:name="com.example.monodo.ACTION_DAILY_BRIEFING" />
+                <action android:name="com.example.monodo.ACTION_MARK_TASK_DONE" />
+                <action android:name="com.example.monodo.ACTION_SNOOZE_TASK" />
+                <action android:name="com.example.monodo.ACTION_BIRTHDAY_PRE_REMINDER" />
+                <action android:name="com.example.monodo.ACTION_BIRTHDAY_MIDNIGHT" />
+                <action android:name="com.example.monodo.ACTION_COPY_BIRTHDAY_WISH" />
+                <action android:name="com.example.monodo.ACTION_POMODORO_FINISHED" />
+                <action android:name="com.example.monodo.ACTION_POMODORO_PAUSE" />
+                <action android:name="com.example.monodo.ACTION_POMODORO_STOP" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Scrollable Task List Widget Provider -->
         <receiver
             android:name=".widget.MonoDoWidgetProvider"
             android:exported="true"
@@ -33,11 +67,44 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.example.monodo.ACTION_COMPLETE_TASK" />
+                <action android:name="com.example.monodo.ACTION_LIST_ITEM_CLICK" />
+                <action android:name="com.example.monodo.ACTION_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/monodo_widget_info" />
         </receiver>
+
+        <!-- RemoteViewsService for Scrollable Home Widget ListView -->
+        <service
+            android:name=".widget.MonoDoWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- Compact Focus Glance Widget Provider -->
+        <receiver
+            android:name=".widget.MonoDoQuickWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_quick_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.monodo.ACTION_COMPLETE_TASK" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/monodo_quick_widget_info" />
+        </receiver>
+
+        <!-- FileProvider for secure in-app APK updates -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

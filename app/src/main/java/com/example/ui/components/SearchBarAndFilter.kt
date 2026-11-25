@@ -57,13 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.TaskPriority
 import com.example.data.model.TaskSortOrder
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.ObsidianBlack
-import com.example.ui.theme.PaperCanvas
-import com.example.ui.theme.PaperSurface
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.RoyalBlueSoft
-import com.example.ui.theme.SlateGraphite
+import com.example.ui.theme.MonoDoThemeTokens
 import com.example.ui.util.HapticFeedbackHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,6 +71,7 @@ fun SearchBarAndFilter(
     onSortOrderSelected: (TaskSortOrder) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val colors = MonoDoThemeTokens.colors
     val focusManager = LocalFocusManager.current
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
@@ -97,8 +92,8 @@ fun SearchBarAndFilter(
                     .weight(1f)
                     .height(46.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(PaperCanvas)
-                    .border(1.dp, HairlineBorder, RoundedCornerShape(12.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -109,7 +104,7 @@ fun SearchBarAndFilter(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
-                        tint = SlateGraphite,
+                        tint = colors.secondaryInk,
                         modifier = Modifier.size(18.dp)
                     )
 
@@ -120,7 +115,7 @@ fun SearchBarAndFilter(
                             Text(
                                 text = "Search tasks...",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = SlateGraphite
+                                color = colors.secondaryInk
                             )
                         }
                         BasicTextField(
@@ -128,10 +123,10 @@ fun SearchBarAndFilter(
                             onValueChange = onQueryChange,
                             singleLine = true,
                             textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                color = ObsidianBlack,
+                                color = colors.primaryInk,
                                 fontWeight = FontWeight.Medium
                             ),
-                            cursorBrush = SolidColor(RoyalBlue),
+                            cursorBrush = SolidColor(colors.accent),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                             modifier = Modifier
@@ -147,12 +142,12 @@ fun SearchBarAndFilter(
                     ) {
                         IconButton(
                             onClick = { onQueryChange("") },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Clear search",
-                                tint = SlateGraphite,
+                                tint = colors.secondaryInk,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -160,16 +155,16 @@ fun SearchBarAndFilter(
                 }
             }
 
-            // Priority Filter Icon Button with badge
+            // Priority Filter Button + Theme-Consistent Dropdown
             Box {
                 Box(
                     modifier = Modifier
                         .size(46.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (selectedPriority != null) ObsidianBlack else PaperCanvas)
+                        .background(if (selectedPriority != null) colors.primaryInk else colors.surface)
                         .border(
                             1.dp,
-                            if (selectedPriority != null) ObsidianBlack else HairlineBorder,
+                            if (selectedPriority != null) colors.primaryInk else colors.border,
                             RoundedCornerShape(12.dp)
                         )
                         .clickable {
@@ -182,19 +177,21 @@ fun SearchBarAndFilter(
                     Icon(
                         imageVector = Icons.Default.FilterList,
                         contentDescription = "Filter Priority",
-                        tint = if (selectedPriority != null) PaperSurface else SlateGraphite,
+                        tint = if (selectedPriority != null) colors.canvas else colors.secondaryInk,
                         modifier = Modifier.size(20.dp)
                     )
                 }
 
                 DropdownMenu(
                     expanded = isFilterMenuOpen,
-                    onDismissRequest = { isFilterMenuOpen = false }
+                    onDismissRequest = { isFilterMenuOpen = false },
+                    containerColor = colors.surface
                 ) {
                     DropdownMenuItem(
                         text = {
                             Text(
                                 text = "All Priorities",
+                                color = colors.primaryInk,
                                 fontWeight = if (selectedPriority == null) FontWeight.Bold else FontWeight.Normal
                             )
                         },
@@ -209,13 +206,14 @@ fun SearchBarAndFilter(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = priority.indicatorSymbol,
-                                        color = priority.monochromeIndicatorColor,
+                                        color = priority.indicatorColor(colors),
                                         fontWeight = FontWeight.Black,
                                         fontSize = 12.sp
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = priority.label,
+                                        color = colors.primaryInk,
                                         fontWeight = if (selectedPriority == priority) FontWeight.Bold else FontWeight.Normal
                                     )
                                 }
@@ -229,15 +227,15 @@ fun SearchBarAndFilter(
                 }
             }
 
-            // Smart Sorting Toolbar Button -> Opens Smooth Minimalist Toggle Sheet
+            // Smart Sorting Sheet Trigger
             Box(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (selectedSortOrder != TaskSortOrder.DEFAULT) RoyalBlue else PaperCanvas)
+                    .background(if (selectedSortOrder != TaskSortOrder.DEFAULT) colors.accent else colors.surface)
                     .border(
                         1.dp,
-                        if (selectedSortOrder != TaskSortOrder.DEFAULT) RoyalBlue else HairlineBorder,
+                        if (selectedSortOrder != TaskSortOrder.DEFAULT) colors.accent else colors.border,
                         RoundedCornerShape(12.dp)
                     )
                     .clickable {
@@ -250,18 +248,18 @@ fun SearchBarAndFilter(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Sort,
                     contentDescription = "Sort Tasks",
-                    tint = if (selectedSortOrder != TaskSortOrder.DEFAULT) Color.White else SlateGraphite,
+                    tint = if (selectedSortOrder != TaskSortOrder.DEFAULT) Color.White else colors.secondaryInk,
                     modifier = Modifier.size(20.dp)
                 )
             }
         }
 
-        // Active Sort / Priority Filter Indicator Row
+        // Active Sort / Priority Filter Pills
         if (selectedSortOrder != TaskSortOrder.DEFAULT || selectedPriority != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 2.dp),
+                    .padding(horizontal = 20.dp, vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -269,8 +267,8 @@ fun SearchBarAndFilter(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(999.dp))
-                            .background(RoyalBlueSoft)
-                            .border(1.dp, Color(0xFFBFDBFE), RoundedCornerShape(999.dp))
+                            .background(colors.accentSoft)
+                            .border(1.dp, colors.accentBorder, RoundedCornerShape(999.dp))
                             .clickable { onSortOrderSelected(TaskSortOrder.DEFAULT) }
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
@@ -278,7 +276,7 @@ fun SearchBarAndFilter(
                             Text(
                                 text = "Sort: ${selectedSortOrder.displayName}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = RoyalBlue,
+                                color = colors.accent,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp
                             )
@@ -286,7 +284,7 @@ fun SearchBarAndFilter(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Reset Sort",
-                                tint = RoyalBlue,
+                                tint = colors.accent,
                                 modifier = Modifier.size(12.dp)
                             )
                         }
@@ -297,7 +295,7 @@ fun SearchBarAndFilter(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(999.dp))
-                            .background(ObsidianBlack)
+                            .background(colors.primaryInk)
                             .clickable { onPrioritySelected(null) }
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
@@ -305,7 +303,7 @@ fun SearchBarAndFilter(
                             Text(
                                 text = "Priority: ${selectedPriority.label}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
+                                color = colors.canvas,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp
                             )
@@ -313,7 +311,7 @@ fun SearchBarAndFilter(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Reset Priority",
-                                tint = Color.White,
+                                tint = colors.canvas,
                                 modifier = Modifier.size(12.dp)
                             )
                         }
@@ -323,13 +321,12 @@ fun SearchBarAndFilter(
         }
     }
 
-    // Minimalist Smart Sorting & Filtering Toggle Sheet
     if (isSortSheetOpen) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { isSortSheetOpen = false },
             sheetState = sheetState,
-            containerColor = PaperSurface
+            containerColor = colors.surface
         ) {
             Column(
                 modifier = Modifier
@@ -340,15 +337,15 @@ fun SearchBarAndFilter(
                     .testTag("smart_sort_bottom_sheet")
             ) {
                 Text(
-                    text = "Smart Sort & Filter",
+                    text = "Smart Sort & Order",
                     style = MaterialTheme.typography.titleLarge,
-                    color = ObsidianBlack,
+                    color = colors.primaryInk,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Arrange tasks by priority, urgency, or creation order",
+                    text = "Default groups into Overdue, Today & Upcoming automatically",
                     style = MaterialTheme.typography.bodySmall,
-                    color = SlateGraphite
+                    color = colors.secondaryInk
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -356,7 +353,7 @@ fun SearchBarAndFilter(
                 Text(
                     text = "SORT BY",
                     style = MaterialTheme.typography.labelSmall,
-                    color = SlateGraphite,
+                    color = colors.secondaryInk,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
@@ -370,10 +367,10 @@ fun SearchBarAndFilter(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) RoyalBlueSoft else PaperCanvas)
+                                .background(if (isSelected) colors.accentSoft else colors.canvas)
                                 .border(
                                     1.dp,
-                                    if (isSelected) RoyalBlue else HairlineBorder,
+                                    if (isSelected) colors.accent else colors.border,
                                     RoundedCornerShape(12.dp)
                                 )
                                 .clickable {
@@ -389,7 +386,7 @@ fun SearchBarAndFilter(
                             Text(
                                 text = order.displayName,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = if (isSelected) RoyalBlue else ObsidianBlack,
+                                color = if (isSelected) colors.accent else colors.primaryInk,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
                             if (isSelected) {
@@ -397,7 +394,7 @@ fun SearchBarAndFilter(
                                     modifier = Modifier
                                         .size(20.dp)
                                         .clip(CircleShape)
-                                        .background(RoyalBlue),
+                                        .background(colors.accent),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -415,4 +412,3 @@ fun SearchBarAndFilter(
         }
     }
 }
-

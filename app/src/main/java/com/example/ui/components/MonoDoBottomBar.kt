@@ -5,7 +5,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -43,10 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.navigation.NavigationTab
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.PaperSurface
-import com.example.ui.theme.RoyalBlue
-import com.example.ui.theme.SlateGraphite
+import com.example.ui.theme.MonoDoThemeTokens
 import com.example.ui.util.HapticFeedbackHelper
 
 @Composable
@@ -54,22 +51,28 @@ fun MonoDoBottomBar(
     currentTab: NavigationTab,
     onTabSelected: (NavigationTab) -> Unit,
     onAddClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isPomodoroRunning: Boolean = false
 ) {
+    val colors = MonoDoThemeTokens.colors
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = PaperSurface,
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp
+        color = colors.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = if (colors.isDark) 0.dp else 6.dp
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(width = 1.dp, color = HairlineBorder)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Crisp top hairline divider only
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.border)
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -78,7 +81,6 @@ fun MonoDoBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                // Tab 1: Tasks
                 NavTabItem(
                     tab = NavigationTab.TASKS,
                     isSelected = currentTab == NavigationTab.TASKS,
@@ -89,7 +91,6 @@ fun MonoDoBottomBar(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Tab 2: Stats
                 NavTabItem(
                     tab = NavigationTab.STATS,
                     isSelected = currentTab == NavigationTab.STATS,
@@ -100,7 +101,7 @@ fun MonoDoBottomBar(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Center Action '+' Button (Royal Blue accent pill, elevated & modern)
+                // Center Royal Blue '+' Action Pill
                 Box(
                     modifier = Modifier.weight(1.1f),
                     contentAlignment = Alignment.Center
@@ -108,12 +109,16 @@ fun MonoDoBottomBar(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .shadow(elevation = 6.dp, shape = CircleShape, spotColor = RoyalBlue.copy(alpha = 0.4f))
+                            .shadow(
+                                elevation = if (colors.isDark) 2.dp else 6.dp,
+                                shape = CircleShape,
+                                spotColor = colors.accent.copy(alpha = 0.4f)
+                            )
                             .clip(CircleShape)
-                            .background(RoyalBlue)
+                            .background(colors.accent)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = PaperSurface)
+                                indication = ripple(color = Color.White)
                             ) {
                                 HapticFeedbackHelper.performSelectionHaptic(view, haptic)
                                 onAddClick()
@@ -124,16 +129,16 @@ fun MonoDoBottomBar(
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Create New Task",
-                            tint = PaperSurface,
+                            tint = Color.White,
                             modifier = Modifier.size(26.dp)
                         )
                     }
                 }
 
-                // Tab 3: Tools
                 NavTabItem(
                     tab = NavigationTab.TOOLS,
                     isSelected = currentTab == NavigationTab.TOOLS,
+                    showActiveDot = isPomodoroRunning && currentTab != NavigationTab.TOOLS,
                     onClick = {
                         HapticFeedbackHelper.performSelectionHaptic(view, haptic)
                         onTabSelected(NavigationTab.TOOLS)
@@ -141,7 +146,6 @@ fun MonoDoBottomBar(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Tab 4: Settings
                 NavTabItem(
                     tab = NavigationTab.SETTINGS,
                     isSelected = currentTab == NavigationTab.SETTINGS,
@@ -163,10 +167,12 @@ private fun NavTabItem(
     tab: NavigationTab,
     isSelected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showActiveDot: Boolean = false
 ) {
+    val colors = MonoDoThemeTokens.colors
     val animatedColor by animateColorAsState(
-        targetValue = if (isSelected) RoyalBlue else SlateGraphite,
+        targetValue = if (isSelected) colors.accent else colors.secondaryInk,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "navColor"
     )
@@ -181,20 +187,31 @@ private fun NavTabItem(
         modifier = modifier
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = false, radius = 24.dp)
+                indication = ripple(bounded = false, radius = 26.dp)
             ) { onClick() }
-            .padding(vertical = 4.dp)
+            .padding(vertical = 6.dp)
             .scale(scale)
             .testTag("nav_tab_${tab.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
-            contentDescription = tab.title,
-            tint = animatedColor,
-            modifier = Modifier.size(22.dp)
-        )
+        Box {
+            Icon(
+                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                contentDescription = tab.title,
+                tint = animatedColor,
+                modifier = Modifier.size(22.dp)
+            )
+            if (showActiveDot) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .align(Alignment.TopEnd)
+                        .clip(CircleShape)
+                        .background(colors.accent)
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = tab.title,

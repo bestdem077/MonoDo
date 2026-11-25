@@ -13,11 +13,29 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
+    // LOCKED: Never change applicationId — required for in-place updates without data loss.
     applicationId = "com.aistudio.monodo.kxmpzq"
     minSdk = 24
     targetSdk = 36
-    versionCode = 4
-    versionName = "2.0.1"
+
+    val baseVersionCode = 10
+    val baseVersionName = "2.1.0"
+    val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+    val ciReleaseTag = System.getenv("MONODO_RELEASE_TAG")?.takeIf { it.isNotBlank() }
+
+    val resolvedVersionCode = if (ciRunNumber != null) baseVersionCode + ciRunNumber else baseVersionCode
+    val resolvedVersionName = when {
+      ciReleaseTag != null -> ciReleaseTag.removePrefix("v").removePrefix("V")
+      ciRunNumber != null -> "$baseVersionName.$ciRunNumber"
+      else -> baseVersionName
+    }
+    val resolvedReleaseTag = ciReleaseTag ?: "v$resolvedVersionName"
+
+    versionCode = resolvedVersionCode
+    versionName = resolvedVersionName
+
+    buildConfigField("String", "GITHUB_REPO", "\"bestdem077/MonoDo\"")
+    buildConfigField("String", "GITHUB_RELEASE_TAG", "\"$resolvedReleaseTag\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
